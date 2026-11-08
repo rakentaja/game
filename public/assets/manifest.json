@@ -1034,34 +1034,6 @@
       "bytes": 25694,
       "license": "CC0-1.0",
       "width": 512
-    },
-    "font_bangers": {
-      "file": "font_bangers.4160a7311d.ttf",
-      "type": "font",
-      "title": "Bangers (display font)",
-      "bytes": 93148,
-      "license": "OFL-1.1"
-    },
-    "font_bangers_license": {
-      "file": "font_bangers_license.630dd5a307.txt",
-      "type": "license-text",
-      "title": "Bangers SIL OFL 1.1",
-      "bytes": 4479,
-      "license": "OFL-1.1"
-    },
-    "font_comicneue": {
-      "file": "font_comicneue.3e7e5fccfd.ttf",
-      "type": "font",
-      "title": "Comic Neue Bold (body font)",
-      "bytes": 55716,
-      "license": "OFL-1.1"
-    },
-    "font_comicneue_license": {
-      "file": "font_comicneue_license.7c38a22e58.txt",
-      "type": "license-text",
-      "title": "Comic Neue SIL OFL 1.1",
-      "bytes": 4390,
-      "license": "OFL-1.1"
     }
   }
 }
