@@ -15,6 +15,8 @@ export const BOSS_ARENA: LevelDef = {
     [0, 26],
     [0, 18],
     [0, 12],
+    // the walk continues into the arena so the intro fires well inside the mouth
+    [0, 6],
   ],
   pathWidth: 1.8,
   // the fight circle matches the Editor's TUNING.boss.arena ([0, 1, 10.5]) with a 1 m margin
@@ -25,7 +27,7 @@ export const BOSS_ARENA: LevelDef = {
   sketches: [],
   triggers: [
     { id: 'boss_start', rect: [-3, 20, 3, 27], action: { type: 'checkpoint' } },
-    { id: 'boss_intro', rect: [-4, 10, 4, 13], action: { type: 'music', layer: 'boss', level: 1 } },
+    { id: 'boss_intro', rect: [-5, 11, 5, 15.5], action: { type: 'music', layer: 'boss', level: 1 } },
   ],
   props: [
     // the Editor's body (TUNING.boss.pos [0, -7], bodyRadius 1.7) blocks like a trunk
