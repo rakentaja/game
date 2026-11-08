@@ -16,6 +16,7 @@ import { FxSystem } from '../fx';
 import { SteppedMixer } from '../render/boil';
 import { type OutlineMode, wordFor } from '../render/index';
 import { InkRenderer } from '../render/renderer';
+import { probeRevealGPU } from '../render/reveal/probe';
 
 THREE.ColorManagement.enabled = false;
 const q = new URLSearchParams(location.search);
@@ -671,7 +672,34 @@ declare global {
     __ink: unknown;
   }
 }
-window.__ink = { render, reveal, fx, events, step, panelCut, pageTurn, time, camera, controls };
+/** e2e: compare the shader's reveal field with the CPU mirror at `n` points around the crystal. */
+function probe(n = 512) {
+  const xz = new Float32Array(n * 2);
+  let s = 12345;
+  const r01 = () => {
+    s = (s * 16807) % 2147483647;
+    return s / 2147483647;
+  };
+  for (let i = 0; i < n; i++) {
+    const a = r01() * Math.PI * 2;
+    const d = r01() * (reveal.radius + 3);
+    xz[i * 2] = reveal.center.x + Math.cos(a) * d;
+    xz[i * 2 + 1] = reveal.center.z + Math.sin(a) * d;
+  }
+  const gpu = probeRevealGPU(render.renderer, reveal, xz);
+  let maxErr = 0;
+  let mismatched = 0;
+  let nearEdge = 0;
+  for (let i = 0; i < n; i++) {
+    const cpu = Math.min(3, Math.max(-2, reveal.fieldAt(xz[i * 2]!, xz[i * 2 + 1]!)));
+    const g = gpu[i]!;
+    maxErr = Math.max(maxErr, Math.abs(cpu - g));
+    if (cpu > 0.5 !== g > 0.5) mismatched++;
+    if (Math.abs(cpu - 0.5) < 0.05) nearEdge++;
+  }
+  return { n, maxErr, mismatched, nearEdge };
+}
+window.__ink = { render, reveal, fx, events, step, panelCut, pageTurn, time, camera, controls, probe };
 if (q.get('shot') === '1') document.body.classList.add('shot');
 
 loadWizard()
