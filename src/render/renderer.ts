@@ -50,8 +50,8 @@ export class InkRenderer implements RenderAPI {
   readonly panel = new PanelCut();
   readonly turn = new PageTurnFx();
   outlineMode: OutlineMode = 'AB';
-  /** Post feature switches (debug). */
-  readonly post = { edges: true, screen: true, paper: true };
+  /** Post feature switches (debug). `view`: 0 normal, 1 reveal mask, 2 palette violations. */
+  readonly post = { edges: true, screen: true, paper: true, view: 0 };
   contextLost = false;
   reduceMotion = false;
 
@@ -330,6 +330,7 @@ export class InkRenderer implements RenderAPI {
     U.uUseEdges!.value = this.post.edges && this.outlineMode !== 'A' ? 1 : 0;
     U.uUseScreen!.value = this.post.screen ? 1 : 0;
     U.uUsePaper!.value = this.post.paper ? 1 : 0;
+    U.uDebugView!.value = this.post.view;
   }
 
   private drawScene(): void {
@@ -359,7 +360,9 @@ export class InkRenderer implements RenderAPI {
       r.setRenderTarget(rt);
       // close-ups play against a flat printed colour, like a comic splash
       r.setClearColor(i === 0 ? this.clear : i === 1 ? this.panelBg1 : this.panelBg2, 1);
+      if (i > 0) this.cullAround(this.panel.focus, TUNING.panelCut.closeUpFar);
       r.render(this.scene, p.camera);
+      if (i > 0) this.uncull();
     }
     r.autoClear = autoClear;
     rt.viewport.set(0, 0, w, h);
@@ -367,6 +370,41 @@ export class InkRenderer implements RenderAPI {
     rt.scissorTest = false;
     r.setRenderTarget(rt);
   }
+
+  /** Hide every mesh whose world bounds miss sphere(focus, radius); undone by `uncull`. */
+  private cullAround(focus: THREE.Vector3, radius: number): void {
+    this.cullFocus.copy(focus);
+    this.cullRadius = radius;
+    this.scene.traverseVisible(this.cullVisit);
+  }
+
+  private uncull(): void {
+    for (let i = 0; i < this.culled.length; i++) this.culled[i]!.visible = true;
+    this.culled.length = 0;
+  }
+
+  private readonly culled: THREE.Object3D[] = [];
+  private readonly cullFocus = new THREE.Vector3();
+  private cullRadius = 0;
+  private readonly cullSphere = new THREE.Sphere();
+  private readonly cullVisit = (o: THREE.Object3D): void => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh || (m as THREE.SkinnedMesh).isSkinnedMesh || !m.frustumCulled || m.userData.inkHullOf)
+      return;
+    const im = m as THREE.InstancedMesh;
+    if (im.isInstancedMesh) {
+      if (!im.boundingSphere) im.computeBoundingSphere();
+      this.cullSphere.copy(im.boundingSphere!);
+    } else {
+      if (!m.geometry.boundingSphere) m.geometry.computeBoundingSphere();
+      this.cullSphere.copy(m.geometry.boundingSphere!);
+    }
+    this.cullSphere.applyMatrix4(m.matrixWorld);
+    if (this.cullSphere.center.distanceTo(this.cullFocus) - this.cullSphere.radius > this.cullRadius) {
+      m.visible = false;
+      this.culled.push(m);
+    }
+  };
 
   private drawPost(target: THREE.WebGLRenderTarget | null, resW?: number, resH?: number): void {
     const r = this.renderer;
@@ -397,6 +435,14 @@ export class InkRenderer implements RenderAPI {
     const w = resW ?? this.rtColor.width;
     const h = resH ?? this.rtColor.height;
     (U.uRes!.value as THREE.Vector2).set(w, h);
+    // letterbox (contain) when the target aspect differs from the frame, e.g. 720×1280 covers
+    const srcA = this.rtColor.width / this.rtColor.height;
+    const dstA = w / h;
+    const crop = U.uCrop!.value as THREE.Vector4;
+    if (Math.abs(srcA - dstA) < 1e-3) crop.set(0, 0, 1, 1);
+    else if (srcA < dstA) crop.set((1 - dstA / srcA) / 2, 0, dstA / srcA, 1);
+    else crop.set(0, (1 - srcA / dstA) / 2, 1, srcA / dstA);
+    U.uAspect!.value = srcA;
     U.uDpr!.value = this.quality.pixelRatio * (w / this.rtColor.width);
     U.uTime!.value = this.shared.uTime!.value;
     U.uBoilSeed!.value = this.shared.uBoilSeed!.value;
@@ -510,7 +556,13 @@ export class InkRenderer implements RenderAPI {
 
   beginPanelCut(word: string, focus: THREE.Vector3, durationS: number): void {
     this.panel.keyDir.copy(this.shared.uKeyDir!.value as THREE.Vector3);
-    this.panel.begin(word, focus, durationS, this.camera, TUNING.panelCut.panels);
+    // budget guard: each close-up costs roughly one more scene's worth of draws / tris
+    const P = TUNING.panelCut;
+    const d = Math.max(1, this.stats.drawCalls);
+    const t = Math.max(1, this.stats.triangles);
+    let count = P.panels;
+    while (count > 2 && (d * count > P.maxDraws || t * count > P.maxTris)) count--;
+    this.panel.begin(word, focus, durationS, this.camera, count);
     this.shake.add(0.35, 0.3);
   }
 
@@ -549,7 +601,20 @@ export class InkRenderer implements RenderAPI {
     const w = Math.max(1, Math.floor(width ?? this.rtColor.width));
     const h = Math.max(1, Math.floor(height ?? this.rtColor.height));
     const rt = new THREE.WebGLRenderTarget(w, h, { depthBuffer: false, generateMipmaps: false });
+    // mid panel-cut: shoot the settled composition (all panels in, stamp landed), not the slam frame
+    const pc = this.panel;
+    const savedT = pc.t;
+    if (pc.active && pc.t < TUNING.panelCut.snapshotAt) {
+      pc.t = Math.min(TUNING.panelCut.snapshotAt, pc.duration * 0.95);
+      pc.update(0, this.camera.aspect);
+      this.drawScene();
+    }
     this.drawPost(rt, w, h);
+    if (pc.t !== savedT) {
+      pc.t = savedT;
+      pc.update(0, this.camera.aspect);
+      this.drawScene();
+    }
     const px = new Uint8Array(w * h * 4);
     this.renderer.readRenderTargetPixels(rt, 0, 0, w, h, px);
     rt.dispose();

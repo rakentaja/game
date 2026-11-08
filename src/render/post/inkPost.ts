@@ -5,10 +5,12 @@
  * cast shadow, so the comic layers cost no extra passes.
  */
 import * as THREE from 'three';
-import { PAL } from '../../data/palette';
+import { ALL_COLORS, PAL } from '../../data/palette';
 import { NOISE_GLSL } from '../noise';
 
 export const MAX_PANELS = 3;
+const PALETTE = ALL_COLORS;
+const PALETTE_N = PALETTE.length;
 
 export const FULLSCREEN_VERT = /* glsl */ `
 varying vec2 vUv;
@@ -114,6 +116,11 @@ uniform float uStampRot, uStampOn;
 // page curl cast shadow (page space: x * aspect)
 uniform vec2 uCurlP0, uCurlN;
 uniform float uCurlR, uCurlOn;
+uniform vec4 uCrop;
+uniform float uAspect;
+// debug views: 1 = ink class / reveal mask, 2 = palette violations
+uniform int uDebugView;
+uniform vec3 uPalette[${PALETTE_N}];
 varying vec2 vUv;
 
 float cross2(vec2 a, vec2 b) { return a.x * b.y - a.y * b.x; }
@@ -139,7 +146,12 @@ vec3 paperTex(vec2 frag, vec3 base) {
 
 void main() {
   vec2 frag = vUv * uRes;
-  vec2 uv = vUv;
+  // uCrop maps the target onto the source frame (letterboxed snapshots); outside = paper margin
+  vec2 uv = uCrop.xy + vUv * uCrop.zw;
+  if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+    gl_FragColor = vec4(paperTex(frag, uPaper), 1.0);
+    return;
+  }
   float boilT = uBoilSeed;
   vec2 jit = (vec2(inkNoiseG(frag / (28.0 * uDpr) + boilT * 7.1), inkNoiseG(frag / (28.0 * uDpr) - boilT * 3.7)) - 0.5)
              * 1.6 * uDpr / uRes;
@@ -217,7 +229,7 @@ void main() {
 
   // ── speed lines in the focus panel ──
   if (panel == 1 && uSpeedLines > 0.0) {
-    vec2 d = (uv - uFocusUv) * uRes / uRes.y;
+    vec2 d = (uv - uFocusUv) * vec2(uAspect, 1.0);
     float ang = atan(d.y, d.x);
     float rays = step(0.74, inkNoiseB(vec2(ang * 38.0, boilT * 3.0)));
     float r = length(d);
@@ -236,7 +248,7 @@ void main() {
 
   // ── page curl: shadow cast onto the new page just past the roll ──
   if (uCurlOn > 0.5) {
-    vec2 pp = vec2(uv.x * uRes.x / uRes.y, uv.y);
+    vec2 pp = vec2(uv.x * uAspect, uv.y);
     float s = dot(pp - uCurlP0, uCurlN);
     float sh = 1.0 - smoothstep(uCurlR, uCurlR * 2.6, s);
     sh *= step(0.0, s);
@@ -261,7 +273,7 @@ void main() {
 
   // ── onomatopoeia stamp (R ink, G letter fill, B burst, A drop shadow) ──
   if (uStampOn > 0.0) {
-    vec2 ap = vec2((uv.x - uStamp.x) * uRes.x / uRes.y, uv.y - uStamp.y);
+    vec2 ap = vec2((uv.x - uStamp.x) * uAspect, uv.y - uStamp.y);
     float cs = cos(uStampRot), sn = sin(uStampRot);
     ap = mat2(cs, -sn, sn, cs) * ap;
     vec2 su = ap / uStamp.zw * 0.5 + 0.5;
@@ -276,6 +288,17 @@ void main() {
       if (st.g > 0.5) col = uGlowCore;
       if (st.r > 0.5) col = uInk;
     }
+  }
+  if (uDebugView == 1) {
+    // reveal mask: paper white, inked black, wet rim / fx orange
+    col = cls > 0.75 ? uInk : (cls > 0.25 ? uGlowCore : uPaper);
+    col = mix(col, col * 0.7, step(0.5, fract((frag.x + frag.y) / (12.0 * uDpr))) * step(cls, 0.25));
+  } else if (uDebugView == 2) {
+    // palette violations in the scene colour (before post): magenta = off-palette
+    vec3 sc = texture2D(tColor, uv).rgb;
+    float best = 1.0;
+    for (int i = 0; i < ${PALETTE_N}; i++) best = min(best, length(sc - uPalette[i]));
+    col = best > 0.02 ? vec3(1.0, 0.0, 1.0) : mix(col, vec3(dot(col, vec3(0.33))), 0.6);
   }
   gl_FragColor = vec4(col, 1.0);
 }
@@ -334,6 +357,10 @@ export function createPostMaterial(halfResEdges: boolean, hq: boolean): THREE.Sh
       uCurlN: { value: new THREE.Vector2(1, 0) },
       uCurlR: { value: 0.1 },
       uCurlOn: { value: 0 },
+      uCrop: { value: new THREE.Vector4(0, 0, 1, 1) },
+      uAspect: { value: 1 },
+      uDebugView: { value: 0 },
+      uPalette: { value: PALETTE.map((c) => new THREE.Color(c)) },
     },
     vertexShader: FULLSCREEN_VERT,
     fragmentShader: POST_FRAG,

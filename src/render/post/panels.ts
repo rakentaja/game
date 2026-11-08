@@ -4,6 +4,7 @@
  * and the onomatopoeia stamp. Timing runs on real time (the sim is frozen by the caller).
  */
 import * as THREE from 'three';
+import { TUNING } from '../../data/tuning';
 import { MAX_PANELS } from './inkPost';
 
 export interface PanelDef {
@@ -145,7 +146,9 @@ export class PanelCut {
     const f = this.focus;
     cam.aspect = aspect;
     cam.near = this.base.near;
-    cam.far = this.base.far;
+    // close-ups only need the subject: a short far plane culls the level behind it (draws/tris
+    // stay near 1× scene instead of 3×), the cut-off reads as the flat comic background
+    cam.far = i === 0 ? this.base.far : Math.min(this.base.far, TUNING.panelCut.closeUpFar);
     cam.up.set(0, 1, 0);
     if (i === 0) {
       cam.position.copy(this.base.position);

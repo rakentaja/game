@@ -11,4 +11,5 @@ void game.boot().catch((e) => {
   document.documentElement.dataset.bootError = String(e);
 });
 if (FLAGS.debug) void import('./debug/debug').then((m) => m.initDebug());
+if (FLAGS.debug || FLAGS.bench) void import('./debug/tools').then((m) => m.install(game));
 Object.assign(window as unknown as Record<string, unknown>, { __game: game });
