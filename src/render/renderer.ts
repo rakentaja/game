@@ -11,7 +11,7 @@ import { PAL } from '../data/palette';
 import { TUNING } from '../data/tuning';
 import { ScreenShake } from '../fx/shake';
 import { BoilClock } from './boil';
-import { createInkMaterial, createSharedUniforms, type InkMaterialExtra } from './materials/InkMaterial';
+import { createInkMaterial, createSharedUniforms } from './materials/InkMaterial';
 import { attachHulls, createHullMaterial } from './outline/hull';
 import { createEdgeMaterial, createPostMaterial, fullscreenTriangle, MAX_PANELS } from './post/inkPost';
 import { STAMP_H, STAMP_W, stampTexture } from './post/lettering';
@@ -127,7 +127,7 @@ export class InkRenderer implements RenderAPI {
 
   // ───────────────────────────── materials / outlines ─────────────────────────────
 
-  createInkMaterial(opts: InkMaterialOptions & InkMaterialExtra): THREE.ShaderMaterial {
+  createInkMaterial(opts: InkMaterialOptions): THREE.ShaderMaterial {
     return createInkMaterial(this.shared, this.reveal.uniforms, RAMPS, opts);
   }
 
@@ -509,6 +509,7 @@ export class InkRenderer implements RenderAPI {
   // ───────────────────────────── comic moments ─────────────────────────────
 
   beginPanelCut(word: string, focus: THREE.Vector3, durationS: number): void {
+    this.panel.keyDir.copy(this.shared.uKeyDir!.value as THREE.Vector3);
     this.panel.begin(word, focus, durationS, this.camera, TUNING.panelCut.panels);
     this.shake.add(0.35, 0.3);
   }

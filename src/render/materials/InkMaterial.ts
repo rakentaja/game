@@ -160,19 +160,31 @@ void main() {
   float hc = inkHash(cell);
   float drop = step(length(fract(cell) - 0.5), (hc - 0.88) * 2.6) * step(0.88, hc);
   bool spat = drop > 0.5 && F > 0.5 - (hc - 0.88) * 3.2 && F < 0.5 && !unprinted;
+  // capillary bleed: ink wicks a little further along the paper's fibres
+  vec2 fq = mat2(0.866, 0.5, -0.5, 0.866) * vWPos.xz;
+  float fib = smoothstep(0.66, 0.9, inkNoiseB(fq * vec2(26.0, 2.4)));
+  bool wick = F < 0.5 && F > 0.5 - 0.3 * fib && !unprinted;
 
+  float rimPx = uRimPx * uDpr;
+  float wetPx = uWetPx * uDpr;
   vec3 col;
   float cls;
-  if (dpx > 0.0 || spat) {
+  if (dpx > 0.0 || spat || wick) {
     col = inkCol;
     cls = 1.0;
-    if (spat) col = uInk;
-    if (dpx > 0.0 && dpx < uWetPx) { col = uInk; cls = 0.5; }
+    if (spat || wick) { col = uInk; cls = 0.5; }
+    if (dpx > 0.0 && dpx < wetPx) {
+      col = uInk;
+      cls = 0.5;
+      // wet gleam: a broken hairline of light riding the fresh ink
+      float gl = step(0.72, inkNoiseA(vWPos.xz * 4.1 - uBoilSeed * 1.9));
+      if (dpx > wetPx * 0.45 && dpx < wetPx * 0.45 + uDpr && gl > 0.5) col = uGlowEdge;
+    }
   } else {
     col = paperCol;
     cls = 0.0;
-    if (dpx > -uRimPx && !unprinted) {
-      float hot = step(0.68, inkNoiseA(vWPos.xz * 2.3 + uBoilSeed * 2.7));
+    if (dpx > -rimPx && !unprinted) {
+      float hot = step(0.6, inkNoiseA(vWPos.xz * 2.3 + uBoilSeed * 2.7));
       col = mix(uGlowEdge, uGlowCore, hot);
       cls = 0.5;
     }
@@ -204,16 +216,11 @@ export function createSharedUniforms(): Record<string, THREE.IUniform> {
   };
 }
 
-export interface InkMaterialExtra {
-  /** Strength of the pencil sketch while unrevealed (0 hides it, e.g. ghosts). Default 1. */
-  sketch?: number;
-}
-
 export function createInkMaterial(
   shared: Record<string, THREE.IUniform>,
   reveal: Record<string, THREE.IUniform>,
   rampColors: Record<string, readonly string[]>,
-  opts: InkMaterialOptions & InkMaterialExtra,
+  opts: InkMaterialOptions,
 ): THREE.ShaderMaterial {
   const ramp = rampColors[opts.ramp]!;
   const useReveal = opts.reveal ?? true;

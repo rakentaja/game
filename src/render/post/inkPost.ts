@@ -221,7 +221,7 @@ void main() {
     float ang = atan(d.y, d.x);
     float rays = step(0.74, inkNoiseB(vec2(ang * 38.0, boilT * 3.0)));
     float r = length(d);
-    float fall = smoothstep(0.16, 0.42, r) * step(inkNoiseA(vec2(ang * 61.0, 3.0)) * 0.25 + 0.2, r);
+    float fall = smoothstep(0.1, 0.26, r) * step(inkNoiseA(vec2(ang * 61.0, 3.0)) * 0.14 + 0.13, r);
     col = mix(col, uInk, rays * fall * uSpeedLines);
   }
 

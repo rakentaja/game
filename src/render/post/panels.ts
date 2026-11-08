@@ -74,6 +74,8 @@ export class PanelCut {
   private readonly tmp = new THREE.Vector3();
   private readonly tmp2 = new THREE.Vector3();
   private readonly fwd = new THREE.Vector3();
+  /** Key light direction (world); close-ups are shot from its side so faces read lit. */
+  readonly keyDir = new THREE.Vector3(-0.5, 0.75, 0.45);
 
   constructor() {
     for (let i = 0; i < MAX_PANELS; i++) {
@@ -156,17 +158,17 @@ export class PanelCut {
       cam.position.add(this.tmp);
       cam.fov = this.base.fov * (aspect < 1 ? 1.12 : 1);
     } else {
-      this.fwd.copy(f).sub(this.base.position).setY(0);
+      // look *against* the key light: camera sits on the lit side of the subject
+      this.fwd.set(-this.keyDir.x, 0, -this.keyDir.z);
       if (this.fwd.lengthSq() < 1e-6) this.fwd.set(0, 0, -1);
       this.fwd.normalize();
-      const side = i === 1 ? 1 : -1;
-      const ang = side * (i === 1 ? 0.7 : 1.9);
+      const ang = i === 1 ? 0.75 : -0.35;
       const ca = Math.cos(ang);
       const sa = Math.sin(ang);
       const dx = this.fwd.x * ca - this.fwd.z * sa;
       const dz = this.fwd.x * sa + this.fwd.z * ca;
-      const dist = (i === 1 ? 3.6 : 2.2) - push * (i === 1 ? 0.7 : 0.45);
-      const h = i === 1 ? 0.45 : 1.6;
+      const dist = (i === 1 ? 3.6 : 2.7) - push * (i === 1 ? 0.7 : 0.45);
+      const h = i === 1 ? 0.45 : 1.25;
       cam.position.set(f.x - dx * dist, f.y + h, f.z - dz * dist);
       this.tmp2.set(f.x, f.y + (i === 1 ? 0.95 : 1.15), f.z);
       cam.lookAt(this.tmp2);
