@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#16100e" />
+  <title>INKWAKE · enemies harness</title>
+  <link rel="stylesheet" href="/src/ui/base.css" />
+  <style>
+    #hud { position: fixed; left: calc(8px + var(--sal)); top: calc(8px + var(--sat)); right: calc(8px + var(--sar));
+      display: flex; justify-content: space-between; align-items: flex-start; pointer-events: none;
+      font: 600 11px/1.35 ui-monospace, Menlo, monospace; color: var(--paper); letter-spacing: .04em; }
+    #stats { background: rgba(22,16,14,.82); border: 2px solid var(--ink); outline: 1px solid #bfae93; padding: 6px 8px; white-space: pre; }
+    #pages { display: flex; gap: 4px; }
+    #pages i { width: 14px; height: 18px; background: var(--paper); border: 2px solid var(--ink); display: block; transform: rotate(-4deg); }
+    #pages i:nth-child(2n) { transform: rotate(5deg); }
+    #pages i.lost { background: transparent; border-style: dashed; border-color: #bfae93; }
+    #bar { position: fixed; left: 0; right: 0; bottom: 0; padding: 8px calc(8px + var(--sar)) calc(10px + var(--sab)) calc(8px + var(--sal));
+      display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+    #bar button { font: 800 12px/1 system-ui, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: var(--ink);
+      background: #f7eedd; border: 2.5px solid var(--ink); box-shadow: 3px 3px 0 var(--ink); padding: 9px 10px; border-radius: 2px; cursor: pointer; }
+    #bar button:active { transform: translate(2px,2px); box-shadow: 1px 1px 0 var(--ink); }
+    #bar button.on { background: var(--gold); }
+    #bar button.k-smudge { background: #e3d3b8; }
+    #bar button.k-scribbler { background: #bfae93; }
+    #bar button.k-blot { background: var(--ink); color: #f7eedd; box-shadow: 3px 3px 0 #bfae93; }
+    #word { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+    #word span { font: 900 clamp(48px, 17vw, 120px)/1 Impact, 'Arial Black', system-ui, sans-serif; color: var(--gold);
+      -webkit-text-stroke: 4px var(--ink); paint-order: stroke fill; text-shadow: 6px 6px 0 var(--ink); transform: rotate(-8deg) scale(0);
+      letter-spacing: .02em; }
+    #word.show span { animation: pop .6s cubic-bezier(.2,1.6,.4,1) forwards; }
+    @keyframes pop { 0% { transform: rotate(-14deg) scale(.2); } 30% { transform: rotate(-6deg) scale(1.12); } 100% { transform: rotate(-8deg) scale(1); } }
+    #panels { position: fixed; inset: 0; pointer-events: none; opacity: 0; }
+    #panels.show { opacity: 1; }
+    #panels i { position: absolute; background: var(--ink); }
+    #hurt { position: fixed; inset: 0; pointer-events: none; opacity: 0; box-shadow: inset 0 0 0 0 var(--ink); transition: opacity .35s; }
+    #hurt.on { opacity: 1; box-shadow: inset 0 0 90px 30px var(--ink); transition: none; }
+    #hint { position: fixed; left: 0; right: 0; bottom: calc(150px + var(--sab)); text-align: center; font: 700 13px/1.4 system-ui, sans-serif; color: var(--ink);
+      pointer-events: none; opacity: .75; letter-spacing: .05em; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <canvas id="gl"></canvas>
+    <div id="hurt"></div>
+    <div id="panels"><i style="left:38%;top:0;bottom:0;width:7px;transform:skewX(-6deg)"></i><i style="left:0;right:0;top:62%;height:7px;transform:skewY(-3deg)"></i></div>
+    <div id="word"><span></span></div>
+    <div id="hint">drag to move the crystal · tap to fire · hold to widen the light</div>
+    <div id="hud"><div id="stats"></div><div id="pages"></div></div>
+    <div id="bar">
+      <button class="k-smudge" data-spawn="smudge">+ Smudge</button>
+      <button class="k-scribbler" data-spawn="scribbler">+ Scribbler</button>
+      <button class="k-blot" data-spawn="blot">+ Blot</button>
+      <button data-act="mixed">Mixed ×8</button>
+      <button data-act="wave">Waves</button>
+      <button data-act="kill">Ink all</button>
+      <button data-act="auto">Auto-bolt</button>
+      <button data-act="hold">Hold light</button>
+      <button data-act="god">God</button>
+    </div>
+  </div>
+  <script type="module" src="/src/dev/enemies.ts"></script>
+</body>
+</html>
