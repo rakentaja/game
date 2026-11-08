@@ -1,0 +1,5 @@
+# Raw upstream downloads are reproducible with `bun scripts/fetch-assets.ts` (checksums in
+# ../sources.lock.json). Never commit them: several licences forbid redistributing raw packs.
+*
+!.gitignore
+!README.md

@@ -1,0 +1,140 @@
+{
+  "generated": "scripts/credits.ts",
+  "credits": [
+    {
+      "author": "Quaternius",
+      "works": [
+        {
+          "title": "Wizard (RPG Character Pack)",
+          "license": "CC0-1.0",
+          "licenseName": "CC0 1.0 (public domain)",
+          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "url": "https://quaternius.com/packs/rpgcharacters.html",
+          "usedIn": [
+            "wizard"
+          ]
+        },
+        {
+          "title": "Universal Animation Library (Standard)",
+          "license": "CC0-1.0",
+          "licenseName": "CC0 1.0 (public domain)",
+          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "url": "https://quaternius.itch.io/universal-animation-library",
+          "usedIn": [
+            "editor",
+            "wizard"
+          ]
+        },
+        {
+          "title": "Universal Animation Library 2 (Standard)",
+          "license": "CC0-1.0",
+          "licenseName": "CC0 1.0 (public domain)",
+          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "url": "https://quaternius.itch.io/universal-animation-library-2",
+          "usedIn": [
+            "editor",
+            "wizard"
+          ]
+        },
+        {
+          "title": "Universal Base Characters (Standard)",
+          "license": "CC0-1.0",
+          "licenseName": "CC0 1.0 (public domain)",
+          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "url": "https://quaternius.itch.io/universal-base-characters",
+          "usedIn": [
+            "editor"
+          ]
+        },
+        {
+          "title": "Stylized Nature MegaKit (Standard)",
+          "license": "CC0-1.0",
+          "licenseName": "CC0 1.0 (public domain)",
+          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "url": "https://quaternius.itch.io/stylized-nature-megakit",
+          "usedIn": [
+            "props_forest"
+          ]
+        }
+      ]
+    },
+    {
+      "author": "Kay Lousberg (KayKit)",
+      "works": [
+        {
+          "title": "KayKit Halloween Bits 1.0",
+          "license": "CC0-1.0",
+          "licenseName": "CC0 1.0 (public domain)",
+          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "url": "https://kaylousberg.itch.io/halloween-bits",
+          "usedIn": [
+            "props_forest",
+            "props_graveyard"
+          ]
+        },
+        {
+          "title": "KayKit Forest Nature Pack (Free)",
+          "license": "CC0-1.0",
+          "licenseName": "CC0 1.0 (public domain)",
+          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "url": "https://kaylousberg.itch.io/kaykit-forest",
+          "usedIn": [
+            "props_forest"
+          ]
+        }
+      ]
+    },
+    {
+      "author": "ambientCG (Lennart Demes)",
+      "works": [
+        {
+          "title": "Paper 003",
+          "license": "CC0-1.0",
+          "licenseName": "CC0 1.0 (public domain)",
+          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "url": "https://ambientcg.com/view?id=Paper003",
+          "usedIn": [
+            "paper_grain",
+            "paper_grain_512"
+          ]
+        }
+      ]
+    },
+    {
+      "author": "Vernon Adams",
+      "works": [
+        {
+          "title": "Bangers",
+          "license": "OFL-1.1",
+          "licenseName": "SIL Open Font License 1.1",
+          "licenseUrl": "https://raw.githubusercontent.com/google/fonts/c13390277dfb1fcc7415d84ef7ef9cfc1e52f8c1/ofl/bangers/OFL.txt",
+          "url": "https://fonts.google.com/specimen/Bangers",
+          "usedIn": [
+            "font_bangers"
+          ]
+        }
+      ]
+    },
+    {
+      "author": "Craig Rozynski, Hrant Papazian",
+      "works": [
+        {
+          "title": "Comic Neue Bold",
+          "license": "OFL-1.1",
+          "licenseName": "SIL Open Font License 1.1",
+          "licenseUrl": "https://raw.githubusercontent.com/google/fonts/3dd78844021e948ceb633d1dcee3f7885561b5d9/ofl/comicneue/OFL.txt",
+          "url": "https://fonts.google.com/specimen/Comic+Neue",
+          "usedIn": [
+            "font_comicneue"
+          ]
+        }
+      ]
+    }
+  ],
+  "original": [
+    "wizard",
+    "editor",
+    "eraser",
+    "props_forest"
+  ]
+}
