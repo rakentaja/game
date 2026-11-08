@@ -1,9 +1,8 @@
 /**
  * M2 render acceptance (PLAN §6 M2): the POC scene rebuilt on the new stack is compared side by
  * side with the original POC; the reveal shader is checked against its CPU mirror; the comic
- * moments render without errors. Runs its own Vite dev server (the harness page is dev-only).
+ * moments render without errors. Uses the dev server on :5197 started by playwright.config.ts (the harness page is dev-only).
  */
-import { type ChildProcess, spawn } from 'node:child_process';
 import path from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
 
@@ -11,28 +10,8 @@ const PORT = 5197;
 const BASE = `http://localhost:${PORT}`;
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const THREE_DIR = path.join(ROOT, 'node_modules/three');
-let server: ChildProcess | null = null;
 
 test.describe.configure({ mode: 'serial' });
-
-test.beforeAll(async () => {
-  server = spawn(path.join(ROOT, 'node_modules/.bin/vite'), ['--port', String(PORT), '--strictPort'], {
-    cwd: ROOT,
-    stdio: 'ignore',
-  });
-  const t0 = Date.now();
-  while (Date.now() - t0 < 30_000) {
-    try {
-      if ((await fetch(`${BASE}/dev/render.html`)).ok) return;
-    } catch {}
-    await new Promise((r) => setTimeout(r, 250));
-  }
-  throw new Error('vite dev server did not start');
-});
-
-test.afterAll(() => {
-  server?.kill();
-});
 
 function watchErrors(page: Page): string[] {
   const errors: string[] = [];
