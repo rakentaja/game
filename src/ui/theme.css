@@ -2139,3 +2139,7 @@
     margin-top: 0;
   }
 }
+/* square caps of zero-length dashes would show as dots before the ink pass */
+.logo:not(.inking) .logo-ink {
+  visibility: hidden;
+}

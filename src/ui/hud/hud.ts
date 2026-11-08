@@ -221,11 +221,11 @@ export class Hud {
 
   // ─── tutorial ───
   showHint(hint: Hint): void {
-    this.tutorial.show(
-      hint,
-      this.src.device?.() ?? (matchMedia('(pointer: coarse)').matches ? 'touch' : 'keyboard'),
-      this.env.settings.get('leftHanded'),
-    );
+    const coarse = matchMedia('(pointer: coarse)').matches;
+    let device = this.src.device?.() ?? (coarse ? 'touch' : 'keyboard');
+    // Input defaults to 'touch' until a key is pressed; on a mouse/keyboard machine show keys
+    if (device === 'touch' && !coarse) device = 'keyboard';
+    this.tutorial.show(hint, device, this.env.settings.get('leftHanded'));
   }
 
   hideHint(hint: Hint): void {

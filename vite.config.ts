@@ -14,7 +14,11 @@ export default defineConfig({
       injectRegister: false,
       manifest: false,
       workbox: {
-        globPatterns: ['**/*.{js,css,html,glb,ktx2,webm,m4a,ogg,mp3,png,svg,woff2,json,webmanifest}'],
+        globPatterns: [
+          '**/*.{js,css,html,glb,ktx2,webm,m4a,ogg,mp3,opus,wav,png,webp,jpg,svg,woff2,ttf,json,webmanifest}',
+        ],
+        // iOS launch images are only read at install time; don't precache 1.3 MB of them
+        globIgnores: ['**/icons/splash/**', '**/*.map'],
         maximumFileSizeToCacheInBytes: 12 * 1024 * 1024,
       },
     }),

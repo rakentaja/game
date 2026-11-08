@@ -7,8 +7,16 @@ import { Screen } from './screen';
 export class DeathOverlay extends Screen {
   private phase: 'in' | 'out' | null = null;
 
+  private covering: Promise<void> | null = null;
+
   /** Print a blank sheet over the scene. Resolves once the screen is fully covered. */
-  async cover(): Promise<void> {
+  cover(): Promise<void> {
+    if (this.phase === 'in' && this.covering) return this.covering;
+    this.covering = this.doCover();
+    return this.covering;
+  }
+
+  private async doCover(): Promise<void> {
     this.phase = 'in';
     this.mount();
     this.el!.classList.add('in');
@@ -19,7 +27,10 @@ export class DeathOverlay extends Screen {
 
   /** Lift the reprinted sheet away (call after respawning behind it). */
   async reveal(): Promise<void> {
-    if (!this.el) return;
+    // never lift before the sheet has landed and been read
+    if (this.covering) await this.covering;
+    this.covering = null;
+    if (!this.el || this.phase !== 'in') return;
     this.phase = 'out';
     this.el.classList.remove('in');
     this.el.classList.add('out');

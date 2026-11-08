@@ -17,7 +17,7 @@ export class PauseScreen extends Screen {
     if (this.env.root.querySelector('.scr-settings')) return;
     e.preventDefault();
     if (this.confirming) this.setConfirm(false);
-    else this.hd?.resume();
+    else if (!this.env.inputDrivesPause) this.hd?.resume();
   };
 
   show(hd: PauseHandlers): void {
