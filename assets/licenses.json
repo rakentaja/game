@@ -236,6 +236,79 @@
           "page": "https://fonts.google.com/specimen/Comic+Neue"
         }
       ]
+  "$comment": "Every file under public/assets must have an entry here (validate.ts fails the build otherwise). Only licenses permitting commercial use.",
+  "assets": [
+    {
+      "file": "fonts/bangers-latin.woff2",
+      "title": "Bangers (latin)",
+      "author": "Vernon Adams",
+      "license": "OFL-1.1",
+      "source": "https://github.com/googlefonts/bangers",
+      "licenseFile": "fonts/OFL-bangers.txt",
+      "usedBy": "ui"
+    },
+    {
+      "file": "fonts/bangers-latin-ext.woff2",
+      "title": "Bangers (latin-ext)",
+      "author": "Vernon Adams",
+      "license": "OFL-1.1",
+      "source": "https://github.com/googlefonts/bangers",
+      "licenseFile": "fonts/OFL-bangers.txt",
+      "usedBy": "ui"
+    },
+    {
+      "file": "fonts/anton-latin.woff2",
+      "title": "Anton (latin)",
+      "author": "Vernon Adams",
+      "license": "OFL-1.1",
+      "source": "https://github.com/googlefonts/AntonFont",
+      "licenseFile": "fonts/OFL-anton.txt",
+      "usedBy": "ui"
+    },
+    {
+      "file": "fonts/anton-latin-ext.woff2",
+      "title": "Anton (latin-ext)",
+      "author": "Vernon Adams",
+      "license": "OFL-1.1",
+      "source": "https://github.com/googlefonts/AntonFont",
+      "licenseFile": "fonts/OFL-anton.txt",
+      "usedBy": "ui"
+    },
+    {
+      "file": "fonts/kalam-400-latin.woff2",
+      "title": "Kalam (400-latin)",
+      "author": "Indian Type Foundry",
+      "license": "OFL-1.1",
+      "source": "https://github.com/itfoundry/kalam",
+      "licenseFile": "fonts/OFL-kalam.txt",
+      "usedBy": "ui"
+    },
+    {
+      "file": "fonts/kalam-400-latin-ext.woff2",
+      "title": "Kalam (400-latin-ext)",
+      "author": "Indian Type Foundry",
+      "license": "OFL-1.1",
+      "source": "https://github.com/itfoundry/kalam",
+      "licenseFile": "fonts/OFL-kalam.txt",
+      "usedBy": "ui"
+    },
+    {
+      "file": "fonts/kalam-700-latin.woff2",
+      "title": "Kalam (700-latin)",
+      "author": "Indian Type Foundry",
+      "license": "OFL-1.1",
+      "source": "https://github.com/itfoundry/kalam",
+      "licenseFile": "fonts/OFL-kalam.txt",
+      "usedBy": "ui"
+    },
+    {
+      "file": "fonts/kalam-700-latin-ext.woff2",
+      "title": "Kalam (700-latin-ext)",
+      "author": "Indian Type Foundry",
+      "license": "OFL-1.1",
+      "source": "https://github.com/itfoundry/kalam",
+      "licenseFile": "fonts/OFL-kalam.txt",
+      "usedBy": "ui"
     }
   ]
 }

@@ -37,6 +37,10 @@ export interface GameEvents {
   'music:intensity': { layer: 'explore' | 'combat' | 'boss'; level: number };
   'settings:changed': { key: string };
   'game:pause': { paused: boolean };
+  /** Show/hide a wordless tutorial hint (levels' `tutorial` trigger action → UI HUD). */
+  'ui:tutorial': { hint: 'move' | 'crystal' | 'bolt' | 'dash' | 'print'; show: boolean };
+  /** Optional exact boss health 0..1 for the HUD bar (otherwise derived from weak-point events). */
+  'boss:health': { value: number };
 }
 
 type Handler<T> = (payload: T) => void;
