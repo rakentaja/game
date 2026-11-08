@@ -18,6 +18,8 @@ export interface TreeSpot {
   lean: number;
   /** Short gnarled stump instead of a full tree (camera-side of the path). */
   stump: boolean;
+  /** 1 = full branching + roots (near the walk), 0 = simplified silhouette (deep woods). */
+  detail: 0 | 1;
   seed: number;
 }
 
@@ -123,6 +125,7 @@ export function buildLayout(def: LevelDef, path: PathSampler): Layout {
         leanZ: lz,
         lean: stump ? 0 : range(rnd, 0.05, 0.3) * (0.5 + near),
         stump,
+        detail: d < 6 ? 1 : 0,
         seed: Math.floor(rnd() * 1e9),
       });
     }
@@ -151,6 +154,7 @@ export function buildLayout(def: LevelDef, path: PathSampler): Layout {
         leanZ: (hit.pz - tz) / off,
         lean: stump ? 0 : range(rnd, 0.08, 0.3),
         stump,
+        detail: 1,
         seed: Math.floor(rnd() * 1e9),
       });
     }
@@ -170,6 +174,7 @@ export function buildLayout(def: LevelDef, path: PathSampler): Layout {
       leanZ: 1,
       lean: range(rnd, 0.02, 0.12),
       stump: false,
+      detail: 1,
       seed: Math.floor(rnd() * 1e9),
     });
   }

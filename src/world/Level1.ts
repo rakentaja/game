@@ -38,7 +38,7 @@ export const LEVEL1: LevelDef = {
   spawns: [
     { kind: 'smudge', at: [-8.5, -34], trigger: 'p1_hollow' },
     { kind: 'smudge', at: [4, -36.5], trigger: 'p1_hollow' },
-    { kind: 'smudge', at: [-5, -64], trigger: 'p1_bridge_ambush' },
+    { kind: 'smudge', at: [-5.5, -50], trigger: 'p1_bridge_ambush' },
   ],
   sketches: [
     {
@@ -91,7 +91,7 @@ export const LEVEL1: LevelDef = {
     [2.2, -51.2, 40],
   ],
   mist: [
-    [0, 0, 7],
+    [1.5, -2.5, 4.5],
     [-2.5, -31.5, 6],
     [0, -58, 9],
   ],

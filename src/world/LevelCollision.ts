@@ -30,6 +30,8 @@ export class LevelCollision implements CollisionAPI {
   private readonly hit = makeHit();
   private readonly unlocked: Rect[] = [];
   private readonly locked = new Map<string, Rect>();
+  /** Array mirror of `locked` for allocation-free iteration on the hot path. */
+  private lockedList: Rect[] = [];
   private readonly voids: VoidRt[];
   private readonly decks: Deck[] = [];
   private readonly blockers: Blocker[];
@@ -49,6 +51,7 @@ export class LevelCollision implements CollisionAPI {
   ) {
     this.voids = (def.voids ?? []).map((v) => ({ rect: v.rect, kind: v.kind, open: false }));
     for (const s of def.sketches) if (s.unlocks) this.locked.set(s.id, s.unlocks);
+    this.lockedList = [...this.locked.values()];
     this.blockers = blockers;
     this.bx0 = height.x0;
     this.bz0 = height.z0;
@@ -86,6 +89,7 @@ export class LevelCollision implements CollisionAPI {
     const r = this.locked.get(id);
     if (!r) return;
     this.locked.delete(id);
+    this.lockedList = [...this.locked.values()];
     this.unlocked.push(r);
     for (const v of this.voids) {
       const cx = (v.rect[0] + v.rect[2]) * 0.5;
@@ -111,6 +115,7 @@ export class LevelCollision implements CollisionAPI {
     this.decks.length = 0;
     this.locked.clear();
     for (const s of this.def.sketches) if (s.unlocks) this.locked.set(s.id, s.unlocks);
+    this.lockedList = [...this.locked.values()];
     for (const v of this.voids) v.open = false;
   }
 
@@ -128,7 +133,7 @@ export class LevelCollision implements CollisionAPI {
   walkable(x: number, z: number): boolean {
     for (const r of this.unlocked) if (inRect(r, x, z)) return true;
     for (const v of this.voids) if (inRect(v.rect, x, z)) return false;
-    for (const r of this.locked.values()) if (inRect(r, x, z)) return false;
+    for (const r of this.lockedList) if (inRect(r, x, z)) return false;
     for (const c of this.def.clearings) {
       const dx = x - c[0];
       const dz = z - c[1];
@@ -143,34 +148,7 @@ export class LevelCollision implements CollisionAPI {
     let pz = z;
     // 1) slide back into the walkable shape
     if (!this.walkable(px, pz)) {
-      this.best = Infinity;
-      this.bx = px;
-      this.bz = pz;
-      const h = this.path.nearest(px, pz, this.hit);
-      const hpx = h.px;
-      const hpz = h.pz;
-      if (h.dist > 1e-6) {
-        const k = Math.max(0, h.halfW - EPS) / h.dist;
-        this.consider(x, z, hpx + (px - hpx) * k, hpz + (pz - hpz) * k);
-      }
-      for (const c of this.def.clearings) {
-        const dx = px - c[0];
-        const dz = pz - c[1];
-        const d = Math.hypot(dx, dz) || 1e-6;
-        const k = (c[2] - EPS) / d;
-        this.consider(x, z, c[0] + dx * k, c[1] + dz * k);
-      }
-      for (const u of this.unlocked) {
-        this.consider(
-          x,
-          z,
-          Math.min(u[2] - EPS, Math.max(u[0] + EPS, px)),
-          Math.min(u[3] - EPS, Math.max(u[1] + EPS, pz)),
-        );
-      }
-      for (const v of this.voids) this.exits(x, z, v.rect);
-      for (const q of this.locked.values()) this.exits(x, z, q);
-      if (this.best === Infinity) this.consider(x, z, hpx, hpz);
+      this.slide(px, pz);
       px = this.bx;
       pz = this.bz;
     }
@@ -194,7 +172,15 @@ export class LevelCollision implements CollisionAPI {
             if (d2 >= min * min) continue;
             const d = Math.sqrt(d2);
             if (d < 1e-6) {
-              px += min; // dead centre: pick a side
+              // dead centre: step toward the walk's centreline (or +x if already on it)
+              const h = this.path.nearest(px, pz, this.hit);
+              const ex = h.px - px;
+              const ez = h.pz - pz;
+              const el = Math.hypot(ex, ez);
+              if (el > 1e-4 && el < Infinity) {
+                px += (ex / el) * min;
+                pz += (ez / el) * min;
+              } else px += min;
             } else {
               const push = min - d;
               px += (dx / d) * push;
@@ -206,8 +192,46 @@ export class LevelCollision implements CollisionAPI {
       }
       if (!any) break;
     }
+    // 3) a trunk at the walk edge may have pushed us out again: slide once more
+    if (!this.walkable(px, pz)) {
+      this.slide(px, pz);
+      px = this.bx;
+      pz = this.bz;
+    }
     out.set(px, pz);
     return px !== x || pz !== z;
+  }
+
+  /** Nearest walkable point to (x,z) among path/clearing/rect projections → this.bx/bz. */
+  private slide(x: number, z: number): void {
+    this.best = Infinity;
+    this.bx = x;
+    this.bz = z;
+    const h = this.path.nearest(x, z, this.hit);
+    const hpx = h.px;
+    const hpz = h.pz;
+    if (h.dist > 1e-6 && h.dist < Infinity) {
+      const k = Math.max(0, h.halfW - EPS) / h.dist;
+      this.consider(x, z, hpx + (x - hpx) * k, hpz + (z - hpz) * k);
+    }
+    for (const c of this.def.clearings) {
+      const dx = x - c[0];
+      const dz = z - c[1];
+      const d = Math.hypot(dx, dz) || 1e-6;
+      const k = (c[2] - EPS) / d;
+      this.consider(x, z, c[0] + dx * k, c[1] + dz * k);
+    }
+    for (const u of this.unlocked) {
+      this.consider(
+        x,
+        z,
+        Math.min(u[2] - EPS, Math.max(u[0] + EPS, x)),
+        Math.min(u[3] - EPS, Math.max(u[1] + EPS, z)),
+      );
+    }
+    for (const v of this.voids) this.exits(x, z, v.rect);
+    for (const q of this.lockedList) this.exits(x, z, q);
+    if (this.best === Infinity && h.dist < Infinity) this.consider(x, z, hpx, hpz);
   }
 
   private best = Infinity;

@@ -79,6 +79,7 @@ export const LEVEL3: LevelDef = {
     { asset: 'proc:boulder', at: [-4.5, 0, -48.5], scale: 0.8 },
     { asset: 'proc:boulder', at: [5, 0, -52.5], scale: 0.75 },
     { asset: 'proc:inkpool', at: [0.5, 0, -50.5], scale: 1.7 },
+    { asset: 'proc:stoneRing', at: [0, 0, -50], scale: 9.2 },
     { asset: 'proc:pillar', at: [-4.3, 0, -63.3], scale: 1.25 },
     { asset: 'proc:pillar', at: [4.3, 0, -63.3], scale: 1.25 },
     { asset: 'proc:lantern', at: [-2.6, 0, -60.6] },

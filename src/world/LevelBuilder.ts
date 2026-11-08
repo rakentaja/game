@@ -14,7 +14,8 @@ import {
   makeShared,
   type SharedLike,
 } from './materials';
-import { inRect, type Rect } from './path';
+import { inRect, makeHit, type Rect } from './path';
+import { createPencilMaterial, StrokeBuilder } from './pencil';
 import { makeRng, type Rng, range } from './rng';
 import { createSketchVisual } from './sketchVisual';
 import { rectSdf } from './terrain';
@@ -251,6 +252,7 @@ export function buildLevel(def: LevelDef, opts: BuildOptions): BuiltLevel {
             leanZ: 1,
             lean: 0,
             stump: true,
+            detail: 1,
             seed: 7,
           },
           y,
@@ -279,6 +281,25 @@ export function buildLevel(def: LevelDef, opts: BuildOptions): BuiltLevel {
           const p = b.attributes.position as THREE.BufferAttribute;
           for (let i = 0; i < p.count; i++) p.setY(i, gy(p.getX(i), p.getZ(i)) + 0.05);
           inkParts.push(b);
+        }
+        break;
+      }
+      case 'stoneRing': {
+        // flush paving slabs around an arena rim (scale = radius), a few tilted or missing
+        const R = s;
+        const n = Math.round(R * 2.6);
+        for (let k = 0; k < n; k++) {
+          if (pr2() < 0.12) continue;
+          const a = (k / n) * Math.PI * 2 + ry;
+          const rr = R + (pr2() - 0.5) * 0.3;
+          const sx = x + Math.cos(a) * rr;
+          const sz = z + Math.sin(a) * rr;
+          const len = ((Math.PI * 2 * R) / n) * (0.82 + pr2() * 0.12);
+          const slab = box(0, 0, 0, len, 0.16, 0.9 + pr2() * 0.3, 0, pr2, 0.04);
+          slab.rotateZ((pr2() - 0.5) * 0.08);
+          slab.rotateY(-a + Math.PI / 2);
+          slab.translate(sx, gy(sx, sz) - 0.08, sz);
+          staffParts.push(slab);
         }
         break;
       }
@@ -554,7 +575,7 @@ export function buildLevel(def: LevelDef, opts: BuildOptions): BuiltLevel {
         const px = x + Math.cos(a) * d;
         const pz = z + Math.sin(a) * d;
         const pr = range(rnd, 0.9, 1.9);
-        sheets.push(new THREE.Matrix4().compose(v3(px, gy(px, pz) + pr * 0.35, pz), q, v3(pr * 1.4, pr, 1)));
+        sheets.push(new THREE.Matrix4().compose(v3(px, gy(px, pz) + pr * 0.8, pz), q, v3(pr * 1.4, pr, 1)));
       }
     }
     const im = new THREE.InstancedMesh(new THREE.PlaneGeometry(2, 2), mm, sheets.length);
@@ -565,6 +586,59 @@ export function buildLevel(def: LevelDef, opts: BuildOptions): BuiltLevel {
     im.renderOrder = 3;
     im.userData.noOutline = true;
     add(im, 'mist');
+  }
+
+  // ───────────── wordless pencil hints on the ground ─────────────
+  {
+    const sb = new StrokeBuilder(def.seed + 17);
+    const hh = makeHit();
+    for (const t of def.triggers) {
+      const a = t.action;
+      if (a?.type !== 'tutorial' || (a.hint !== 'move' && a.hint !== 'dash')) continue;
+      const cx = (t.rect[0] + t.rect[2]) / 2;
+      const cz = (t.rect[1] + t.rect[3]) / 2;
+      path.nearest(cx, cz, hh);
+      const s0 = hh.s + (a.hint === 'move' ? 1.5 : 0);
+      // chevrons marching up the walk (dash: tighter, doubled, with speed lines)
+      const n = a.hint === 'move' ? 3 : 2;
+      for (let k = 0; k < n; k++) {
+        path.at(s0 + k * (a.hint === 'move' ? 1.1 : 0.55), hh);
+        const w = a.hint === 'move' ? 0.55 : 0.7;
+        const fx = hh.tx;
+        const fz = hh.tz;
+        const tipx = hh.px + fx * 0.4;
+        const tipz = hh.pz + fz * 0.4;
+        const lx = hh.px - fz * w - fx * 0.15;
+        const lz = hh.pz + fx * w - fz * 0.15;
+        const rx = hh.px + fz * w - fx * 0.15;
+        const rz = hh.pz - fx * w - fz * 0.15;
+        const y = (x: number, z: number) => gy(x, z) + 0.07;
+        sb.poly([lx, y(lx, lz), lz, tipx, y(tipx, tipz), tipz, rx, y(rx, rz), rz], false, 2);
+      }
+      if (a.hint === 'dash') {
+        for (const side of [-0.35, 0, 0.35]) {
+          path.at(s0 - 1.4, hh);
+          const ax = hh.px - hh.tz * side;
+          const az = hh.pz + hh.tx * side;
+          path.at(s0 - 0.4, hh);
+          const bx = hh.px - hh.tz * side;
+          const bz = hh.pz + hh.tx * side;
+          sb.line(ax, gy(ax, az) + 0.07, az, bx, gy(bx, bz) + 0.07, bz, 1);
+        }
+      }
+    }
+    if (sb.segmentCount) {
+      const pm = createPencilMaterial(opts.resolution, { width: 2.6, lead: PAL.ghost[3] });
+      pm.uniforms.uDash.value = 0.9;
+      owned.push(pm.mat);
+      const hints = new THREE.Mesh(sb.build(), pm.mat);
+      hints.userData.noOutline = true;
+      hints.frustumCulled = false;
+      add(hints, 'hints');
+      updaters.push((_dt, time) => {
+        pm.uniforms.uBoil.value = Math.floor(time * TUNING.boil.hz) * 0.37;
+      });
+    }
   }
 
   // ───────────── sketches ─────────────
@@ -597,14 +671,13 @@ export function buildLevel(def: LevelDef, opts: BuildOptions): BuiltLevel {
     beacons,
     sketchVisual,
     syncWells(wells) {
-      wells.forEach((w, i) => {
-        const s = wellSurfaces[i];
-        if (!s) return;
-        const y = gy(w.x, w.z);
-        s.position.y = y + 0.2 + 0.32 * w.charge;
+      for (let i = 0; i < wells.length && i < wellSurfaces.length; i++) {
+        const w = wells[i]!;
+        const s = wellSurfaces[i]!;
+        s.position.y = gy(w.x, w.z) + 0.2 + 0.32 * w.charge;
         s.scale.setScalar(0.75 + 0.25 * w.charge);
         (s.material as THREE.ShaderMaterial).uniforms.uCharge!.value = w.charge;
-      });
+      }
     },
     update(dt, time) {
       for (const u of updaters) u(dt, time);
@@ -722,10 +795,10 @@ export function treeGeometry(t: TreeSpot, y0: number, rnd: Rng): THREE.BufferGeo
     const s = i / 10;
     radii.push(t.r * (1 - 0.72 * s) * (1 + 1.7 * (Math.max(0, 0.13 - s) / 0.13) ** 2));
   }
-  out.push(tube(pts, radii, 7, 12));
+  out.push(tube(pts, radii, t.detail ? 7 : 5, t.detail ? 12 : 9));
   const curve = new THREE.CatmullRomCurve3(pts);
   // branches: crooked, reaching outward and over the walk
-  const nb = 2 + Math.floor(rnd() * 3);
+  const nb = t.detail ? 2 + Math.floor(rnd() * 3) : 1 + Math.floor(rnd() * 2);
   for (let b = 0; b < nb; b++) {
     const s = 0.42 + rnd() * 0.45;
     const p = curve.getPointAt(s);
@@ -745,9 +818,9 @@ export function treeGeometry(t: TreeSpot, y0: number, rnd: Rng): THREE.BufferGeo
       bp.push(cur);
     }
     const r0 = Math.max(0.035, t.r * (1 - 0.72 * s) * 0.55);
-    out.push(tube(bp, [r0, r0 * 0.6, r0 * 0.35, 0.012], 5, 6));
+    out.push(tube(bp, [r0, r0 * 0.6, r0 * 0.35, 0.012], t.detail ? 5 : 4, t.detail ? 6 : 4));
     // a twig fork near the tip
-    if (rnd() < 0.7) {
+    if (t.detail && rnd() < 0.7) {
       const fp = bp[2]!.clone();
       const fd = dir
         .clone()
@@ -786,12 +859,12 @@ export function treeGeometry(t: TreeSpot, y0: number, rnd: Rng): THREE.BufferGeo
             .add(v3(0, 0.2, 0)),
         ],
         [t.r * 0.3, t.r * 0.15, 0.012],
+        3,
         4,
-        5,
       ),
     );
   }
-  const nr = 3 + Math.floor(rnd() * 3);
+  const nr = t.detail ? 3 + Math.floor(rnd() * 2) : 0;
   for (let k = 0; k < nr; k++) out.push(rootGeometry(base, t.r, rnd, k / nr));
   return out;
 }
@@ -818,7 +891,7 @@ function rootGeometry(base: THREE.Vector3, r: number, rnd: Rng, frac: number): T
       .add(v3(0, -0.08, 0))
       .addScaledVector(d, L),
   ];
-  return tube(pts, [r * 0.5, r * 0.32, r * 0.16, 0.02], 4, 5);
+  return tube(pts, [r * 0.5, r * 0.32, r * 0.16, 0.02], 4, 4);
 }
 
 function rockGeometry(rnd: Rng): THREE.BufferGeometry {

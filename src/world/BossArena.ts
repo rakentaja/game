@@ -43,6 +43,8 @@ export const BOSS_ARENA: LevelDef = {
     { asset: 'proc:page', at: [-2, 0, -7], rotY: 2.1, scale: 1.4 },
     { asset: 'proc:page', at: [4, 0, 8], rotY: 1.2, scale: 1.2 },
     { asset: 'proc:inkpool', at: [0, 0, -4], scale: 3.2 },
+    { asset: 'proc:stoneRing', at: [0, 0, 0], scale: 13.2 },
+    { asset: 'proc:stoneRing', at: [0, 0, 0], scale: 6.5, rotY: 0.3 },
     { asset: 'proc:lantern', at: [-2.4, 0, 19] },
     { asset: 'proc:lantern', at: [2.4, 0, 19] },
   ],
@@ -51,7 +53,7 @@ export const BOSS_ARENA: LevelDef = {
   inkWells: [
     [-12.5, 0, 25],
     [12.5, 0, 25],
-    [0, 13, 20],
+    [-5.5, 9.5, 20],
   ],
   mist: [
     [0, 0, 14],

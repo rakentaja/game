@@ -4,7 +4,7 @@
  *   t=0..1            start position along the walk;  hold=1 freezes there
  *   reveal=0          show the page fully inked (composition check);  r=N fixes reveal radius
  *   map=0|1|full      top-down debug map
- *   print=all         pre-print every sketch
+ *   print=all         pre-print every sketch;  hud=0 hides the overlay (clean captures)
  * Keys: 1-4 page · C camera · M map · R reveal · P print nearest · Space pause · ←/→ scrub
  */
 import * as THREE from 'three';
@@ -38,6 +38,10 @@ const hud = document.getElementById('hud')!;
 const titleEl = document.getElementById('title')!;
 const mapEl = document.getElementById('map') as HTMLCanvasElement;
 const bar = document.getElementById('bar')!;
+if (q.get('hud') === '0') {
+  hud.style.display = 'none';
+  bar.style.display = 'none';
+}
 
 const R = createStubRender(canvas);
 const events = new EventBus<GameEvents>();
