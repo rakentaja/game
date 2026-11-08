@@ -227,6 +227,8 @@ export interface SketchObjectDef {
   unlocks?: [number, number, number, number];
   /** Spawn group triggered while printing (tension). */
   ambushTrigger?: string;
+  /** Printing stays disabled until `trigger:fired` with this id (e.g. arena cleared). */
+  requires?: string;
 }
 
 export interface TriggerDef {
@@ -275,6 +277,22 @@ export interface LevelDef {
   /** Ink wells: [x, z, energy]. */
   inkWells: Vec3T[];
   music: 'explore' | 'combat' | 'boss';
+  /** Optional per-path-point half-width multipliers (narrow corridors). Same length as `path`. */
+  widths?: number[];
+  /** Non-walkable rects overriding path/clearings (ink chasms, cliffs, closed gates) unless a printed sketch unlocks them. */
+  voids?: { rect: [number, number, number, number]; kind: 'chasm' | 'cliff' | 'wall' }[];
+  /** Ground shaping: noise amplitude, bank rise beside the path, raised plateaus (stairs targets). */
+  terrain?: {
+    amp?: number;
+    bank?: number;
+    plateaus?: { rect: [number, number, number, number]; h: number; falloff: number }[];
+  };
+  /** Low ground-mist patches [x, z, r]. */
+  mist?: Vec3T[];
+  /** Key light / shadow threshold hints for the page's mood (render may apply). */
+  mood?: { keyDir?: Vec3T; shadow?: number };
+  /** Named world anchors (boss spawn, cinematic camera points...). */
+  anchors?: Record<string, Vec3T>;
 }
 
 // ───────────────────────────── Audio ─────────────────────────────

@@ -47,6 +47,10 @@ export interface GameEvents {
   'ui:tutorial': { hint: 'move' | 'crystal' | 'bolt' | 'dash' | 'print'; show: boolean };
   /** Optional exact boss health 0..1 for the HUD bar (otherwise derived from weak-point events). */
   'boss:health': { value: number };
+  /** A level trigger rect was entered (spawner listens for SpawnDef.trigger / ambushTrigger ids). */
+  'trigger:fired': { id: string };
+  /** Wordless tutorial hint request (UI draws the glyph). `show:false` hides it. */
+  'tutorial:hint': { hint: 'move' | 'crystal' | 'bolt' | 'dash' | 'print'; show: boolean };
 }
 
 type Handler<T> = (payload: T) => void;
