@@ -17,7 +17,7 @@ export const ScribblerBrain: Brain = {
     e.radius = t.scribblerAi.radius;
     e.hp = e.maxHp = t.scribbler.hp;
     e.orbitDir = w.rng.sign();
-    e.fireCd = w.rng.range(0.6, 1.4);
+    e.fireCd = w.rng.range(0.8, 1.6) * w.tempo;
   },
 
   stalk(e, w) {
@@ -29,6 +29,7 @@ export const ScribblerBrain: Brain = {
     const t = w.tuning.enemies;
     const s = t.scribbler;
     const a = t.scribblerAi;
+    const speed = s.speed * w.speedMul;
     if (e.state === AiState.Stalk) {
       e.windup = 0;
       e.fireCd -= dt;
@@ -40,11 +41,11 @@ export const ScribblerBrain: Brain = {
           w.playerX,
           w.playerZ,
           a.preferRange,
-          s.speed * a.orbitSpeed,
+          speed * a.orbitSpeed,
           e.orbitDir,
           1.4,
         );
-        clampLen(desired, s.speed);
+        clampLen(desired, speed);
       } else {
         desired.x = desired.z = 0;
       }
@@ -59,11 +60,16 @@ export const ScribblerBrain: Brain = {
         distToPlayer(e, w) <= s.range &&
         w.lineClear(e.position.x, e.position.z, w.playerX, w.playerZ)
       ) {
-        e.setState(AiState.Attack, s.telegraph);
+        if (!w.requestAttack(e)) {
+          e.fireCd = 0.4;
+          return;
+        }
+        const tel = s.telegraph * w.tempo;
+        e.setState(AiState.Attack, tel);
         // Aim is locked at telegraph start (slight lead) so sidestepping always works.
         e.aimX = w.playerX + w.playerVX * a.aimLead;
         e.aimZ = w.playerZ + w.playerVZ * a.aimLead;
-        w.telegraph(e, s.telegraph);
+        w.telegraph(e, tel);
       }
       return;
     }
@@ -71,8 +77,8 @@ export const ScribblerBrain: Brain = {
     if (e.state === AiState.Attack) {
       desired.x = desired.z = 0;
       if (e.phase === 0) {
-        e.windup = Math.min(1, e.stateT / s.telegraph);
-        if (e.stateT >= s.telegraph) {
+        e.windup = Math.min(1, e.stateT / e.stateDur);
+        if (e.stateT >= e.stateDur) {
           let dx = e.aimX - e.position.x;
           let dz = e.aimZ - e.position.z;
           const d = Math.sqrt(dx * dx + dz * dz) || 1;
@@ -91,7 +97,7 @@ export const ScribblerBrain: Brain = {
       }
       e.lunge = Math.max(0, 1 - e.stateT / FOLLOW_THROUGH);
       if (e.stateT >= FOLLOW_THROUGH) {
-        e.fireCd = s.fireCooldown * w.rng.range(0.85, 1.15);
+        e.fireCd = s.fireCooldown * w.tempo * w.rng.range(0.85, 1.15);
         ScribblerBrain.stalk(e, w);
       }
     }

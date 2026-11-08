@@ -52,13 +52,16 @@ class FakePlayer implements PlayerAPI {
   playClip() {}
 }
 
-function setup() {
+function setup(difficulty: 'story' | 'normal' = 'normal') {
   const events = new EventBus<GameEvents>();
   const reveal = new FakeReveal();
   const player = new FakePlayer();
   const targets = new Targets();
   const stats = { ghostsInked: 0 } as never;
-  const sys = new EnemySystem({ events, tuning: TUNING, reveal, targets, player, stats }, 42);
+  const sys = new EnemySystem(
+    { events, tuning: TUNING, reveal, targets, player, stats, settings: { difficulty } },
+    42,
+  );
   const log: { type: keyof GameEvents; p: unknown }[] = [];
   for (const t of [
     'enemy:revealed',
@@ -110,7 +113,8 @@ describe('fsm', () => {
     let sawAttack = false;
     let minOutside = Number.POSITIVE_INFINITY;
     run(sys, 8, () => {
-      if (e.state === AiState.Stalk && e.stateT > 1) minOutside = Math.min(minOutside, e.position.length());
+      if (!sawAttack && e.state === AiState.Stalk && e.stateT > 1)
+        minOutside = Math.min(minOutside, e.position.length());
       if (e.state === AiState.Attack) sawAttack = true;
     });
     expect(minOutside).toBeGreaterThan(3); // lurks beyond radius 3
@@ -327,5 +331,94 @@ describe('spawner', () => {
     ]);
     expect(sp.isCleared('t')).toBe(true);
     expect(sp.allStartedCleared).toBe(true);
+  });
+});
+
+describe('fairness', () => {
+  it('caps simultaneous smudge/scribbler attacks (2 normal, 1 story)', () => {
+    for (const [diff, cap] of [
+      ['normal', 2],
+      ['story', 1],
+    ] as const) {
+      const { sys, player } = setup(diff);
+      player.invulnerable = true;
+      for (let i = 0; i < 6; i++) sys.spawn(i % 2 ? 'smudge' : 'scribbler', Math.cos(i) * 6, Math.sin(i) * 6);
+      let maxAtk = 0;
+      run(sys, 12, () => {
+        let n = 0;
+        for (const e of sys.pool) if (e.alive && e.state === AiState.Attack) n++;
+        maxAtk = Math.max(maxAtk, n);
+      });
+      expect(maxAtk).toBeGreaterThan(0);
+      expect(maxAtk).toBeLessThanOrEqual(cap);
+    }
+  });
+
+  it('story stretches the scribbler telegraph', () => {
+    const { sys, log } = setup('story');
+    sys.spawn('scribbler', 6, 0);
+    run(sys, 6);
+    const tel = log.find((l) => l.type === 'enemy:telegraph')!.p as { duration: number };
+    expect(tel.duration).toBeCloseTo(
+      TUNING.enemies.scribbler.telegraph * TUNING.difficulty.story.enemyTempo,
+      5,
+    );
+  });
+
+  it('blot telegraphs its latch before draining and never chokes the light below the floor', () => {
+    const { sys, reveal, log } = setup();
+    const b = sys.spawn('blot', 2.5, 0)!;
+    let firstDrainT = -1;
+    let teleT = -1;
+    let t = 0;
+    let minTarget = 99;
+    log.length = 0;
+    run(sys, 6, () => {
+      t += DT;
+      if (teleT < 0 && log.some((l) => l.type === 'enemy:telegraph')) teleT = t;
+      if (firstDrainT < 0 && reveal.targetRadius < 3 - 1e-6) firstDrainT = t;
+      minTarget = Math.min(minTarget, reveal.targetRadius);
+      reveal.targetRadius = 3;
+    });
+    expect(teleT).toBeGreaterThan(0);
+    expect(firstDrainT - teleT).toBeGreaterThanOrEqual(TUNING.enemies.blotAi.latchTime - DT);
+    expect(minTarget).toBeGreaterThanOrEqual(TUNING.enemies.blotAi.minRadius - 1e-6);
+    // a latched blot stays revealed (shootable)
+    expect(b.revealed).toBe(true);
+  });
+
+  it('hitting a draining blot knocks it off and resets the drain', () => {
+    const { sys, reveal } = setup();
+    const b = sys.spawn('blot', 2.5, 0)!;
+    run(sys, 5, () => {
+      reveal.targetRadius = 3;
+    });
+    expect(b.drain).toBeGreaterThan(0.5);
+    b.hit(1, new THREE.Vector3());
+    expect(b.drain).toBe(0);
+    expect(b.state).toBe(AiState.Recoil);
+  });
+
+  it('respawn calms everyone; boss death tears summoned ghosts apart', () => {
+    const { sys, events } = setup();
+    const e = sys.spawn('smudge', 5, 0)!;
+    run(sys, 6, () => {
+      if (e.state === AiState.Attack) events.emit('player:respawn', { checkpointId: 'x' });
+    });
+    expect(e.age).toBeLessThan(6);
+    sys.spawn('scribbler', -5, 0);
+    events.emit('boss:death', { stage: 'inked' });
+    expect(sys.activeCount).toBe(0);
+  });
+});
+
+describe('mercy', () => {
+  it('stretches enemy tempo while the player is out of ink', () => {
+    const { sys, player } = setup();
+    sys.step(DT);
+    expect(sys.tempo).toBe(1);
+    player.energy = 0;
+    sys.step(DT);
+    expect(sys.tempo).toBeCloseTo(TUNING.enemies.ai.mercyTempo, 5);
   });
 });

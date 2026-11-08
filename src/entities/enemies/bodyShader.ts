@@ -1,4 +1,4 @@
-import { MASK_GLSL, NOISE_GLSL } from './glsl';
+import { NOISE_GLSL } from './glsl';
 
 /**
  * One lathe grid drives all three enemy bodies: the vertex shader evaluates a per-kind surface
@@ -118,6 +118,10 @@ vec3 blotShape(float u, float v, out float puddle){
   r += R * 0.65 * pow(max(0.0, sin(7.0 * th + SEED * 11.0 + sin(T * 0.7) * 0.6)), 10.0) * puddle;
   float breathe = 1.0 + 0.09 * sin(T * 3.1 + SEED * 5.0) + DRAIN * 0.14 * sin(T * 11.0);
   y *= breathe;
+  // Latch telegraph: rears up into a tall teardrop, narrows and shivers.
+  y *= 1.0 + 0.75 * WIND * smoothstep(0.15, 0.9, v);
+  r *= 1.0 - 0.22 * WIND * smoothstep(0.3, 1.0, v);
+  r += sin(T * 46.0 + v * 9.0) * 0.025 * WIND;
   vec3 p = vec3(sin(th) * r, y, cos(th) * r);
   // drain tendril reaching for the crystal
   vec2 dir = normalize(DDIR + vec2(1e-4));
@@ -254,13 +258,14 @@ void main(){
 
 export const BODY_FRAG = /* glsl */ `
 ${NOISE_GLSL}
-${MASK_GLSL}
+__INK_MASK__
 uniform vec3 uRamp0, uRamp1, uRamp2, uRamp3;
 uniform vec3 uKeyDir;
 uniform vec3 uCrystalPos;
 uniform float uShadow;
 uniform float uTime;
 uniform float uOutline;
+uniform float uFogNear, uFogFar;
 varying vec3 vWPos;
 varying vec3 vN;
 varying vec2 vGrid;
@@ -305,7 +310,7 @@ float face(float kind, float a, float v, float wind, float lunge, float drain, f
   float pupil = min(ell(q, vec2(-0.33, 0.635), vec2(0.05, 0.02)), ell(q, vec2(0.36, 0.655), vec2(0.04, 0.017)));
   if (pupil < 1.0) return 0.0;
   if (eL < 1.0 || eR < 1.0) return 2.0;
-  float open = 0.01 + 0.07 * drain;
+  float open = 0.01 + 0.07 * max(drain, wind);
   if (abs(a) < 0.2 + 0.1 * drain && abs(v - 0.53) < open * (1.0 - pow(abs(a) / (0.21 + 0.1 * drain), 2.0))) return 2.0;
   return 0.0;
 }
@@ -338,7 +343,8 @@ void main(){
     float hatch = abs(fract((gl_FragCoord.x * 0.7 + gl_FragCoord.y) / 5.5 + en(vWPos.xz * 3.0) * 0.6) - 0.5) * 2.0;
     bool line = hatch < 0.28 * k + 0.05 || rim > 0.86 - 0.2 * k;
     if (!line || eh(gl_FragCoord.xy + floor(uTime * 12.0)) > k * 1.3) discard;
-    gl_FragColor = vec4(kind > 1.5 ? uRamp1 : uRamp0, 1.0);
+    // alpha = ink class for render's post pass: 0 = pencil on paper
+    gl_FragColor = vec4(kind > 1.5 ? uRamp1 : uRamp0, 0.0);
     return;
   }
 
@@ -347,6 +353,7 @@ void main(){
   float d2 = dot(L, L);
   float pl = max(dot(N, normalize(L)), 0.0) * 1.6 / (1.0 + d2 * 0.1);
   float tone = 0.78 * ((kind > 1.5 ? 0.16 : 0.34) + key + pl);
+  tone *= 1.0 - smoothstep(uFogNear, uFogFar, distance(cameraPosition, vWPos));
   if (!gl_FrontFacing && kind < 1.5) tone *= 0.35; // dark inside the sheet
   // crease lines + fibres
   float cr = abs(en3(vLocal * vec3(7.0, 5.0, 7.0) + seed * 21.0) - 0.5);

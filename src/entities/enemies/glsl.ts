@@ -15,6 +15,9 @@ float en3(vec3 p){ vec3 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
 float efbm(vec2 p){ float a=.5,s=0.; for(int i=0;i<4;i++){ s+=a*en(p); p*=2.03; a*=.5;} return s; }
 `;
 
+/** Placeholder in enemy shaders, replaced by MASK_GLSL or renderMaskGlsl() at build time. */
+export const MASK_TOKEN = '__INK_MASK__';
+
 export const MASK_GLSL = /* glsl */ `
 uniform vec3 uRevealCenter;
 uniform float uRevealRadius;
@@ -28,3 +31,17 @@ float inkMask(vec2 xz){
   return m * (1.0 - uBlankPage);
 }
 `;
+
+/**
+ * In-game mask: render's reveal field (primary circle + temporary sources + history map + blank
+ * page), so enemies are visible exactly where gameplay's `reveal.revealAt` says they are.
+ */
+export function renderMaskGlsl(revealGlsl: string): string {
+  return /* glsl */ `
+${revealGlsl}
+float inkMask(vec2 xz){
+  float F = clamp(revealField(xz), 0.0, 1.0);
+  return F * F * (3.0 - 2.0 * F);
+}
+`;
+}

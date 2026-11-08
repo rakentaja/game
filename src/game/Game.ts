@@ -182,10 +182,14 @@ export class Game {
         player: this.player,
         stats: ctx.stats,
         collision: this.collision,
+        settings: ctx.settings,
       },
       FLAGS.seed,
     );
-    this.enemyGfx = new EnemyRenderer(this.enemies, { crystalPos: () => this.player.crystalPos });
+    this.enemyGfx = new EnemyRenderer(this.enemies, {
+      crystalPos: () => this.player.crystalPos,
+      inkContext: { shared: this.render.shared, reveal: ctx.reveal.uniforms },
+    });
     this.render.scene.add(this.enemyGfx.root);
     this.spawner = new Spawner(ctx.events, this.enemies);
     this.wireEvents();
@@ -362,8 +366,9 @@ export class Game {
   private step(dt: number): void {
     if (this.mode === 'boot' || this.paused) return;
     const ctx = this.ctx;
+    // installAutoplay patches input.poll() to drive the bot; driving it again here cleared its
+    // edge-triggered presses (no bolt ever fired under ?autoplay=1).
     ctx.input.poll();
-    if (this.bot) this.bot.drive(ctx.input.state, dt);
     this.player.step(dt);
     this.combat.step(dt);
     this.pickups.step(dt, this.player, (n) => this.energy.add(n));

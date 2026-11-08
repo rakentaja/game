@@ -120,7 +120,7 @@ export const TUNING = {
   enemies: {
     maxActive: 8,
     smudge: { hp: 2, speed: 2.6, damage: 1, inkDrop: 6 },
-    scribbler: { hp: 3, speed: 1.6, range: 8, telegraph: 0.8, fireCooldown: 2.4, damage: 1, inkDrop: 9 },
+    scribbler: { hp: 3, speed: 1.6, range: 8, telegraph: 0.8, fireCooldown: 2.8, damage: 1, inkDrop: 9 },
     blot: { hp: 3, speed: 1.3, drainRadius: 3, radiusSuppress: 0.5, damage: 1, inkDrop: 12 },
     /** Enemy AI / feel (workstream: enemies). */
     ai: {
@@ -141,23 +141,31 @@ export const TUNING = {
       hitFlash: 0.18,
       deathTime: 0.85,
       contactCooldown: 0.9,
+      /** Max smudge/scribbler attacks in flight at once (difficulty overrides). */
+      maxAttackers: 2,
+      /** Grace after a spawn before the first attack may start. */
+      firstAttackDelay: 1.2,
+      /** Extra tempo stretch while the player can't afford a bolt (out-of-ink mercy). */
+      mercyTempo: 1.6,
     },
     smudgeAi: {
       radius: 0.45,
       stalkOffset: 1.1,
       orbitSpeed: 1.9,
-      stalkMin: 1.4,
-      stalkMax: 3.2,
-      windup: 0.42,
-      dartSpeed: 9.5,
-      dartTime: 0.55,
+      stalkMin: 1.8,
+      stalkMax: 3.6,
+      windup: 0.55,
+      dartSpeed: 8.5,
+      /** Max dart duration; actual = time to pass the aim point by `dartOvershoot`. */
+      dartTime: 0.95,
+      dartOvershoot: 1.4,
       dartRange: 9,
     },
     scribblerAi: {
       radius: 0.4,
       preferRange: 6.5,
       orbitSpeed: 0.9,
-      projectileSpeed: 13,
+      projectileSpeed: 11,
       projectileRadius: 0.22,
       projectileLife: 1.4,
       maxProjectiles: 8,
@@ -167,6 +175,12 @@ export const TUNING = {
       radius: 0.6,
       drainPulse: 0.9,
       minRadiusFactor: 0.35,
+      /** Absolute light floor under drain (m): a latched blot always stays revealed & shootable. */
+      minRadius: 2.4,
+      /** Rear-up telegraph before the drain starts (s). */
+      latchTime: 1.1,
+      /** Seconds for the drain to reach full strength once latched. */
+      drainRamp: 2.6,
       stopDistance: 1.1,
     },
     fx: { scraps: 18, droplets: 10, maxParticles: 160, scrapSpeed: 4.2, gravity: 11, particleLife: 1.3 },
@@ -270,8 +284,17 @@ export const TUNING = {
   },
   pageTurn: { duration: 0.9 },
   difficulty: {
-    story: { damageTaken: 0.5, energyCost: 0.6 },
-    normal: { damageTaken: 1, energyCost: 1 },
+    // enemyTempo stretches enemy windups/cooldowns, enemySpeed scales their movement,
+    // drainMul scales blot drain, maxAttackers caps simultaneous smudge/scribbler attacks.
+    story: {
+      damageTaken: 0.5,
+      energyCost: 0.6,
+      enemyTempo: 1.35,
+      enemySpeed: 0.85,
+      drainMul: 0.6,
+      maxAttackers: 1,
+    },
+    normal: { damageTaken: 1, energyCost: 1, enemyTempo: 1, enemySpeed: 1, drainMul: 1, maxAttackers: 2 },
   },
   quality: {
     targetFrameMs: 16.7,
