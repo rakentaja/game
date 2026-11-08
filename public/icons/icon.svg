@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <pattern id="h" width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(28)">
+      <rect width="14" height="14" fill="#16100e"/>
+      <rect width="5" height="14" fill="#1d3a38"/>
+    </pattern>
+    <pattern id="d" width="16" height="16" patternUnits="userSpaceOnUse">
+      <circle cx="8" cy="8" r="3.6" fill="#6e2f2c"/>
+    </pattern>
+    <clipPath id="disc">
+      <path d="M256 112 C342 110 408 172 410 258 C412 344 342 410 256 408 C166 406 104 344 106 256 C108 170 172 114 256 112 Z"/>
+    </clipPath>
+  </defs>
+  <rect width="512" height="512" fill="url(#h)"/>
+  <path d="M256 92 C352 88 424 160 428 256 C432 356 352 430 256 428 C150 426 84 352 86 254 C88 160 162 96 256 92 Z" fill="#16100e"/>
+  <g clip-path="url(#disc)">
+    <rect width="512" height="512" fill="#b8655c"/>
+    <rect width="512" height="512" fill="url(#d)"/>
+    <!-- ink wake pouring from the crystal -->
+    <path d="M232 300 C236 330 214 346 200 372 C186 398 196 420 160 430 L360 430 C330 418 330 396 316 372 C302 346 278 332 282 300 Z" fill="#16100e"/>
+    <path d="M60 380 C140 352 190 372 256 362 C330 352 380 340 460 372 V460 H60 Z" fill="#16100e"/>
+  </g>
+  <path d="M208 330 a9 13 0 1 0 0.1 0 Z M306 316 a7 10 0 1 0 0.1 0 Z" fill="#16100e"/>
+  <g stroke-linecap="round" stroke="#f6c35a" stroke-width="12">
+    <path d="M256 62 V38 M180 110 L160 92 M332 110 L352 92 M146 196 H118 M366 196 H394"/>
+  </g>
+  <path d="M256 80 L338 198 L256 312 L174 198 Z" fill="#16100e" transform="translate(10 12)"/>
+  <path d="M256 80 L338 198 L256 312 L174 198 Z" fill="#f6c35a" stroke="#16100e" stroke-width="14" stroke-linejoin="round"/>
+  <path d="M174 198 H338 M256 80 L236 198 L256 312 M256 80 L290 198" fill="none" stroke="#e2794e" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M214 160 L238 124" stroke="#f7eedd" stroke-width="10" stroke-linecap="round"/>
+</svg>
