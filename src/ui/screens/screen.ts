@@ -13,6 +13,8 @@ export interface UIEnv {
   sfx(id: SfxId): void;
   haptic(pattern: number | number[]): void;
   reduceMotion(): boolean;
+  /** Game input (Esc/P/Start) toggles pause; screens must not also handle Escape for it. */
+  inputDrivesPause?: boolean;
   toast(msg: string | Node, opts?: ToastOpts): () => void;
 }
 

@@ -9,6 +9,8 @@
  *   await ui.cover(ctx.stats);                                        // resolves on "Back to title"
  */
 import type { EventBus, GameEvents } from '../core/events';
+import { FLAGS } from '../core/flags';
+import { haptics } from '../core/input/haptics';
 import { captureInstallPrompt, installHeadLinks, installMode, promptInstall, registerPWA } from '../core/pwa';
 import { load, save } from '../core/storage';
 import type { GameContext, PageId, RunStats, Settings, SfxId } from '../core/types';
@@ -83,6 +85,8 @@ export class UI {
     this.bus = ctx.events;
     this.root = opts.root ?? (document.getElementById('ui-root') as HTMLElement) ?? document.body;
     this.settings = new SettingsStore(this.bus, ctx.settings);
+    // ?lang=tr|en (debug/share links) overrides for this session without persisting
+    if (FLAGS.lang) this.settings.value.lang = FLAGS.lang;
     this.i18n = new I18n(this.settings.get('lang'));
     document.documentElement.lang = this.i18n.lang;
     this.t = this.i18n.t;
@@ -98,6 +102,7 @@ export class UI {
       sfx: (id) => this.sfx(id),
       haptic: (p) => this.haptic(p),
       reduceMotion: () => this.settings.get('reduceMotion'),
+      inputDrivesPause: !!ctx.input,
       toast: (m, o) => this.toast(m, o),
     };
 
@@ -124,6 +129,8 @@ export class UI {
     this.root.append(this.hud.el, this.toasts.el);
 
     if (ctx.t === undefined || ctx.t !== this.t) (ctx as { t?: UI['t'] }).t = this.t;
+    // input-side haptics (taps/dash/crystal) honour the vibration toggle
+    haptics.settings = this.settings.value;
     this.wire();
     this.applyAll();
     captureInstallPrompt();
@@ -176,6 +183,7 @@ export class UI {
   /** Show the title menu; resolves when the player starts (or continues) the issue. */
   title(opts: { continuePage?: number | null } = {}): Promise<'play' | 'continue'> {
     this.hideHud();
+    this.card.hide();
     this.bus.emit('music:intensity', { layer: 'explore', level: 0 });
     return new Promise((resolve) => {
       const done = (r: 'play' | 'continue') => {
@@ -273,6 +281,23 @@ export class UI {
   /** Per frame (allocation-free). */
   update(dt: number): void {
     this.hud.update(dt);
+    // Esc / P / gamepad Start (Input latches them; the game loop doesn't poll while paused)
+    const input = this.ctx.input;
+    if (!input) return;
+    if (this.paused) {
+      input.poll();
+      if (input.state.pausePressed) {
+        if (this.settingsScr.visible) this.settingsScr.close();
+        else if (this.creditsScr.visible) this.creditsScr.close();
+        else {
+          this.setPaused(false);
+          input.poll(); // clear the edge so the next frame doesn't re-pause
+        }
+      }
+    } else if (input.state.pausePressed && this.hud.visible && !this.death.active) {
+      input.poll(); // consume so the next frame doesn't see the same edge
+      this.setPaused(true);
+    }
   }
 
   // ───────────────────────── internals ─────────────────────────
@@ -329,7 +354,8 @@ export class UI {
       this.hud.hideHint('print');
     });
     this.on('page:start', (e) => {
-      void this.card.show(e.page);
+      // the title screen's live background page must not get a card
+      if (this.hud.visible) void this.card.show(e.page);
       if (e.page !== 'boss') this.hud.showBoss(false);
     });
     this.on('boss:phase', (e) => {
