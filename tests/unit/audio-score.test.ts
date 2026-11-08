@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { install } from '../../src/audio/install';
 import type { Instruments } from '../../src/audio/music/instruments';
 import { bossPhase, type Intensity, LAYERS, type LayerName, TRACKS } from '../../src/audio/music/tracks';
@@ -127,11 +127,17 @@ describe('generative score', () => {
 describe('install() event bridge', () => {
   function setup() {
     const calls: [string, ...unknown[]][] = [];
+    const loops = { started: 0, stopped: 0 };
     const audio: AudioAPI = {
       unlock: async () => {},
       play: (id: SfxId, o?: { position?: { x: number; y: number; z: number }; volume?: number }) =>
         calls.push(['play', id, o?.position ? [o.position.x, o.position.y, o.position.z] : null, o?.volume]),
-      loop: () => () => {},
+      loop: () => {
+        loops.started++;
+        return () => {
+          loops.stopped++;
+        };
+      },
       setMusic: (t) => calls.push(['music', t]),
       setIntensity: (l, v) => calls.push(['int', l, v]),
       setListener: () => {},
@@ -143,7 +149,7 @@ describe('install() event bridge', () => {
     const settings = { ...DEFAULT_SETTINGS };
     const ctx = { events, settings, audio } as unknown as GameContext;
     const off = install(ctx);
-    return { calls, events, settings, off };
+    return { calls, events, settings, off, loops };
   }
 
   it('routes sfx:play with tuple positions', () => {
@@ -171,16 +177,63 @@ describe('install() event bridge', () => {
     expect(calls.length).toBe(n);
   });
 
-  it('derives combat from enemies until an explicit driver appears', () => {
+  it('combat follows max(trigger, fight heat) and the heat drains', () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'setTimeout', 'performance'] });
+    try {
+      const { calls, events } = setup();
+      const combat = () => calls.filter((c) => c[0] === 'int' && c[1] === 'combat').at(-1)?.[2] as number;
+      events.emit('enemy:revealed', { id: 1, kind: 'smudge', first: true });
+      expect(combat()).toBeCloseTo(0.45, 2);
+      events.emit('music:intensity', { layer: 'combat', level: 0.6 });
+      expect(combat()).toBeCloseTo(0.6, 2);
+      events.emit('music:intensity', { layer: 'combat', level: 0 });
+      expect(combat()).toBeGreaterThan(0.4);
+      vi.advanceTimersByTime(30000);
+      expect(combat()).toBe(0);
+      expect(vi.getTimerCount()).toBe(0); // drain timer stops when idle
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('boss music never runs ahead of the announced phase', () => {
     const { calls, events } = setup();
-    events.emit('enemy:spawn', { id: 1, kind: 'smudge' });
-    events.emit('enemy:revealed', { id: 1, kind: 'smudge', first: true });
-    expect(calls.at(-1)).toEqual(['int', 'combat', 2 / 6]);
-    events.emit('enemy:died', { id: 1, kind: 'smudge', position: [0, 0, 0] });
-    expect(calls.at(-1)).toEqual(['int', 'combat', 0]);
-    events.emit('music:intensity', { layer: 'combat', level: 0.9 });
-    const n = calls.length;
-    events.emit('enemy:spawn', { id: 2, kind: 'blot' });
-    expect(calls.length).toBe(n);
+    const boss = () => calls.filter((c) => c[0] === 'int' && c[1] === 'boss').at(-1)?.[2] as number;
+    events.emit('music:intensity', { layer: 'boss', level: 1 }); // arena trigger before the fight
+    expect(boss()).toBeLessThan(0.5);
+    events.emit('boss:phase', { phase: 2 });
+    events.emit('music:intensity', { layer: 'boss', level: 1 });
+    expect(boss()).toBeLessThan(0.84);
+    events.emit('boss:phase', { phase: 3 });
+    expect(boss()).toBe(1);
+  });
+
+  it('turns the one-shot sketch request into a loop that stops when printing stops', () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
+    try {
+      const { calls, events, loops } = setup();
+      events.emit('sfx:play', { id: 'sketch_loop', volume: 0.6 });
+      expect(loops.started).toBe(1);
+      for (let i = 1; i <= 5; i++) {
+        vi.advanceTimersByTime(100);
+        events.emit('sketch:progress', { id: 'bridge', t: i * 0.05 });
+      }
+      expect(loops.stopped).toBe(0);
+      vi.advanceTimersByTime(400);
+      expect(loops.stopped).toBe(1);
+      events.emit('sketch:progress', { id: 'bridge', t: 0.3 }); // resumes after a pause
+      expect(loops.started).toBe(2);
+      events.emit('sketch:printed', { id: 'bridge' });
+      expect(loops.stopped).toBe(2);
+      expect(calls.some((c) => c[0] === 'play' && c[1] === 'sketch_loop')).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('plays the comic stinger on panel cuts', () => {
+    const { calls, events } = setup();
+    events.emit('fx:panelCut', { word: 'krak', focus: [0, 0, 0], reason: 'crit' });
+    expect(calls).toContainEqual(['play', 'panel_stinger', null, undefined]);
   });
 });

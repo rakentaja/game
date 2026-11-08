@@ -40,6 +40,10 @@ const SPATIAL_VOICES = 18;
 const FLAT_VOICES = 10;
 /** Music sits ~4 LU under SFX at equal faders (measured: explore ≈ -23 LUFS, SFX reel ≈ -18). */
 const MUSIC_TRIM = 0.6;
+/** Camera-to-player distance (TUNING.camera: 9 m back, 7.5 m up ≈ 11.7 m). */
+const LISTENER_REF_M = 12;
+/** Events that count as user activation for touch (pointerdown/touchstart do NOT on iOS). */
+export const ACTIVATION_EVENTS = ['touchend', 'pointerup', 'click', 'keydown', 'mousedown'] as const;
 const PENTA = [0, 2, 4, 7, 9, 12, 14, 16, 19];
 
 interface Voice {
@@ -99,6 +103,8 @@ export class AudioEngine implements AudioAPI {
   private levels: BusLevels = { master: 0.9, music: 0.7, sfx: 0.9 };
   private userSuspended = false;
   private unlocked = false;
+  private resuming = false;
+  private lastListener = new Float64Array([Number.NaN, 0, 0, 0, 0, 0]);
   private paused = false;
   private wantTrack: TrackName | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -181,9 +187,12 @@ export class AudioEngine implements AudioAPI {
         panner = ac.createPanner();
         panner.panningModel = 'equalpower';
         panner.distanceModel = 'inverse';
-        panner.refDistance = 3;
-        panner.maxDistance = 60;
-        panner.rolloffFactor = 1.1;
+        // The listener rides the camera ~12 m from the player, so unity gain sits at that
+        // distance: the hero's own sounds play at mastered level and things further up the
+        // page fall off naturally (24 m ≈ -6 dB, 48 m ≈ -12 dB).
+        panner.refDistance = LISTENER_REF_M;
+        panner.maxDistance = 80;
+        panner.rolloffFactor = 1;
         gain.connect(panner);
         panner.connect(sfxIn);
       } else gain.connect(sfxIn);
@@ -193,6 +202,7 @@ export class AudioEngine implements AudioAPI {
     this.applyVolumes(true);
     this.installLifecycle();
     this.timer = setInterval(() => this.music.tick(), 25);
+    if (import.meta.env?.DEV) (globalThis as { __inkAudio?: AudioEngine }).__inkAudio = this;
     this.ready = this.bakeAll(opts.onBaked, opts.sprite === undefined ? SPRITE : opts.sprite);
   }
 
@@ -200,20 +210,24 @@ export class AudioEngine implements AudioAPI {
 
   async unlock(): Promise<void> {
     const ac = this.ac;
-    if (!this.unlocked) {
-      // iOS < 15 needs a buffer played inside the gesture to truly unlock.
-      const b = ac.createBuffer(1, 1, ac.sampleRate);
+    this.unlocked = true;
+    if (ac.state !== 'running') {
+      // iOS < 15 needs a buffer started inside the gesture to truly unlock; harmless elsewhere.
       const s = ac.createBufferSource();
-      s.buffer = b;
+      s.buffer = ac.createBuffer(1, 1, ac.sampleRate);
       s.connect(ac.destination);
       s.start(0);
-      this.unlocked = true;
     }
     if (ac.state !== 'running' && !this.userSuspended) {
+      // resume() settles a few ms after the gesture; sounds requested meanwhile (the tap's own
+      // UI click, a title stinger) are scheduled anyway and start the moment the clock runs.
+      this.resuming = true;
       try {
         await ac.resume();
       } catch {
         /* resume rejected outside a gesture — the next gesture retries */
+      } finally {
+        this.resuming = false;
       }
     }
     if (this.wantTrack && !this.music.track) this.music.setTrack(this.wantTrack);
@@ -227,7 +241,7 @@ export class AudioEngine implements AudioAPI {
   /** Allocation-free entry used by the event bridge (positions arrive as tuples). */
   playAt(id: SfxId, x: number, y: number, z: number, volume = 1, rate = 1): void {
     const ac = this.ac;
-    if (ac.state !== 'running') return;
+    if (ac.state !== 'running' && !this.resuming) return;
     const r = SFX[id];
     if (!r) return;
     const now = ac.currentTime;
@@ -332,6 +346,21 @@ export class AudioEngine implements AudioAPI {
   }
 
   setListener(pos: Vector3, forward: Vector3): void {
+    // Called every frame: skip the 9 AudioParam writes while the camera is still (menus,
+    // panel cuts, pause) — each write is a timeline event the audio thread must process.
+    const c = this.lastListener;
+    if (
+      Math.abs(c[0]! - pos.x) + Math.abs(c[1]! - pos.y) + Math.abs(c[2]! - pos.z) < 1e-3 &&
+      Math.abs(c[3]! - forward.x) + Math.abs(c[4]! - forward.y) + Math.abs(c[5]! - forward.z) < 1e-4
+    ) {
+      return;
+    }
+    c[0] = pos.x;
+    c[1] = pos.y;
+    c[2] = pos.z;
+    c[3] = forward.x;
+    c[4] = forward.y;
+    c[5] = forward.z;
     const l = this.ac.listener;
     // up = world Y orthogonalised against forward (the camera looks down at ~48°)
     let fx = forward.x;
@@ -554,28 +583,28 @@ export class AudioEngine implements AudioAPI {
       if (document.visibilityState === 'hidden') void ac.suspend().catch(() => {});
       else if (!this.userSuspended && this.unlocked) void ac.resume().catch(() => {});
     };
-    // iOS "interrupted" (call, Siri) or a resume() that was refused: retry on the next gesture
+    // A context resumed by any later gesture picks up the track that was requested meanwhile.
+    const onState = () => {
+      if (ac.state === 'running' && this.wantTrack && !this.music.track) this.music.setTrack(this.wantTrack);
+    };
+    ac.addEventListener('statechange', onState);
+    // First touch, iOS "interrupted" (call, Siri, app switch) or a refused resume(): every
+    // activation-triggering gesture retries. unlock()'s synchronous part runs inside the gesture.
     const onGesture = () => {
-      if (
-        this.unlocked &&
-        !this.userSuspended &&
-        ac.state !== 'running' &&
-        document.visibilityState !== 'hidden'
-      ) {
-        void ac.resume().catch(() => {});
+      if (!this.userSuspended && ac.state !== 'running' && document.visibilityState !== 'hidden') {
+        void this.unlock();
       }
     };
     document.addEventListener('visibilitychange', onVis);
     addEventListener('pagehide', onVis);
     addEventListener('pageshow', onVis);
-    addEventListener('pointerdown', onGesture, true);
-    addEventListener('keydown', onGesture, true);
+    for (const e of ACTIVATION_EVENTS) addEventListener(e, onGesture, true);
     this.disposers.push(() => {
       document.removeEventListener('visibilitychange', onVis);
       removeEventListener('pagehide', onVis);
       removeEventListener('pageshow', onVis);
-      removeEventListener('pointerdown', onGesture, true);
-      removeEventListener('keydown', onGesture, true);
+      ac.removeEventListener('statechange', onState);
+      for (const e of ACTIVATION_EVENTS) removeEventListener(e, onGesture, true);
     });
   }
 }

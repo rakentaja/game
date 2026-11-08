@@ -9,7 +9,7 @@ const disposeAudio = installAudio(ctx); // unlock on first gesture + event bridg
 audio.setListener(listenerPos, listenerForward);
 ```
 
-Events consumed: `sfx:play`, `music:intensity`, `settings:changed` (`master`/`music`/`sfx`),
+Events consumed (see install.ts): `sfx:play`, `music:intensity`, `settings:changed` (`master`/`music`/`sfx`),
 `boss:phase`, `game:pause`, `state:change` (title→title, playing→explore, boss→boss,
 cover/credits→cover), `enemy:spawn|revealed|died`, `page:start`, `player:respawn` (auto combat).
 
@@ -26,3 +26,8 @@ the boss eraser sweeps. Gameplay-relevant behaviour baked into the bank:
 
 Harness: `bun run dev` → `/dev/audio.html` (soundboard with peak/LUFS/GR readouts and
 spectrograms, music track/stem/phase controls, loops, spatial pad, master meter).
+
+In-game behaviour added by `install()`: panel stinger on every `fx:panelCut`; combat intensity =
+max(level trigger, fight heat that drains in ~6 s); boss intensity capped to the announced phase;
+`sfx:play` `sketch_loop` (no position) becomes a managed loop while print progress rises.
+Dev builds expose the engine as `globalThis.__inkAudio` for inspection.

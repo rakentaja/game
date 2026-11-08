@@ -342,16 +342,13 @@ export class Game {
         this.snapshotPending = 4;
       }
     });
+    // Audio handles both itself: game:pause muffles music and silences loops (pause-menu clicks
+    // still play); the engine suspends on hide and resumes on show / the next gesture (iOS).
     ev.on('game:pause', (e) => {
       this.paused = e.paused;
-      if (e.paused) this.ctx.audio.suspend();
-      else this.ctx.audio.resume();
     });
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) {
-        if (this.mode === 'playing') this.setPaused(true);
-        this.ctx.audio.suspend();
-      } else if (!this.paused) this.ctx.audio.resume();
+      if (document.hidden && this.mode === 'playing') this.setPaused(true);
     });
   }
 
