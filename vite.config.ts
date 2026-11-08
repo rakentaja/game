@@ -3,6 +3,7 @@ import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
+  base: process.env.BASE_PATH ?? '/',
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   assetsInclude: ['**/*.glsl', '**/*.glb', '**/*.ktx2'],
   build: { target: 'es2022', sourcemap: true, chunkSizeWarningLimit: 900 },
