@@ -30,7 +30,32 @@ export const TUNING = {
   bolt: { cost: 5, speed: 16, damage: 1, maxRange: 12, cooldown: 0.18 },
   dash: { distance: 4, duration: 0.25, iFrames: 0.25, cooldown: 2, trailLife: 2.5 },
   gesture: { tapMaxMs: 180, tapMaxPx: 12, holdMinMs: 180, swipeMinPx: 40, swipeMaxMs: 200, deadZone: 0.12 },
-  sketch: { holdToPrint: 2, requiredRadius: 7 },
+  sketch: {
+    holdToPrint: 2,
+    requiredRadius: 7,
+    /** Progress lost per second when the hold breaks (fraction of full print). */
+    decayPerSec: 0.35,
+    /** Reveal radius must be at least this fraction of requiredRadius to count. */
+    radiusSlack: 0.92,
+    stampDuration: 0.35,
+    gateOpenTime: 0.9,
+    printedRevealRadius: 3.2,
+  },
+  world: {
+    groundCell: 1,
+    groundMargin: 26,
+    treeSpacing: 2.6,
+    treeBand: 16,
+    edgeClearance: 0.7,
+    cameraOcclusionDepth: 8,
+    trunkRadius: 0.5,
+    chunkSize: 24,
+    wellRadius: 1.3,
+    wellRevealRadius: 2.2,
+    /** Seconds for a drained ink well to refill (keeps prints solvable, no softlocks). */
+    wellRefill: 22,
+  },
+  checkpoint: { respawnDelay: 1.6, reprintTurn: 0.6, refillPages: true },
   enemies: {
     maxActive: 8,
     smudge: { hp: 2, speed: 2.6, damage: 1, inkDrop: 6 },

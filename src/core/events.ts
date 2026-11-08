@@ -31,6 +31,10 @@ export interface GameEvents {
   'music:intensity': { layer: 'explore' | 'combat' | 'boss'; level: number };
   'settings:changed': { key: string };
   'game:pause': { paused: boolean };
+  /** A level trigger rect was entered (spawner listens for SpawnDef.trigger / ambushTrigger ids). */
+  'trigger:fired': { id: string };
+  /** Wordless tutorial hint request (UI draws the glyph). `show:false` hides it. */
+  'tutorial:hint': { hint: 'move' | 'crystal' | 'bolt' | 'dash' | 'print'; show: boolean };
 }
 
 type Handler<T> = (payload: T) => void;
