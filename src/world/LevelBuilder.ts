@@ -147,8 +147,10 @@ export function buildLevel(def: LevelDef, opts: BuildOptions): BuiltLevel {
         for (let d = -2; d <= 2; d++) s += edgeN[Math.max(0, Math.min(path.count - 1, i + d))]![k];
         return s / 5;
       };
-      const wl = path.hw[i]! * (0.82 + smoothE(0) * 0.35) + (e[0] - 0.5) * 0.08;
-      const wr = path.hw[i]! * (0.82 + smoothE(1) * 0.35) + (e[1] - 0.5) * 0.08;
+      // the trodden strip is narrower than the walkable band: grass verges read as walkable too,
+      // and through the wide gameplay camera the trail stays a trail rather than a road
+      const wl = path.hw[i]! * (0.6 + smoothE(0) * 0.32) + (e[0] - 0.5) * 0.08;
+      const wr = path.hw[i]! * (0.6 + smoothE(1) * 0.32) + (e[1] - 0.5) * 0.08;
       L.push([path.xs[i]! - tz * wl, path.zs[i]! + tx * wl]);
       R.push([path.xs[i]! + tz * wr, path.zs[i]! - tx * wr]);
     }
@@ -568,6 +570,7 @@ export function buildLevel(def: LevelDef, opts: BuildOptions): BuiltLevel {
     // camera-facing fog banks standing on the ground (instance scale = half width, height)
     const sheets: THREE.Matrix4[] = [];
     const q = new THREE.Quaternion();
+    const mistHit = makeHit();
     for (const [x, z, r] of def.mist) {
       const n = Math.max(4, Math.round(r * 1.6));
       for (let i = 0; i < n; i++) {
@@ -576,6 +579,9 @@ export function buildLevel(def: LevelDef, opts: BuildOptions): BuiltLevel {
         const px = x + Math.cos(a) * d;
         const pz = z + Math.sin(a) * d;
         const pr = range(rnd, 0.9, 1.9);
+        // keep fog banks off the trodden strip: they read as smudges over the walk from above
+        const ph = path.nearest(px, pz, mistHit);
+        if (ph.dist < ph.halfW * 0.7 + pr * 0.5) continue;
         sheets.push(new THREE.Matrix4().compose(v3(px, gy(px, pz) + pr * 0.8, pz), q, v3(pr * 1.4, pr, 1)));
       }
     }

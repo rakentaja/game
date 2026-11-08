@@ -262,6 +262,7 @@ export class Game {
           path: def.path,
           sketches: def.sketches.map((s) => ({ id: s.id, at: s.at })),
           inkWells: def.inkWells,
+          canPrint: (id) => this.level?.sketches.isEnabled(id) ?? true,
         },
         this.rig,
         { boss: () => this.editor?.fsm ?? null, projectiles: this.enemies.projectiles },
@@ -350,6 +351,11 @@ export class Game {
       if (this.page === null || this.mode !== 'playing') return;
       this.saveData.lastCheckpoint = { page: this.page, id };
       save(SAVE_KEY, this.saveData);
+    });
+    ev.on('player:respawn', () => {
+      // fresh encounters after a reprint: no ghosts camping the checkpoint, fights replay from their triggers
+      this.enemies.clear();
+      if (this.level && this.page !== 'boss') this.spawner.load(this.level.def);
     });
     ev.on('player:died', () => {
       this.ctx.stats.deaths++;

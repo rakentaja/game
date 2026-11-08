@@ -65,6 +65,8 @@ export interface AutoplayLevel {
   sketches?: { id: string; at: Vec3T }[];
   /** [x, z, energy] — the bot detours here when low on ink. */
   inkWells?: Vec3T[];
+  /** False while a sketch is dormant (e.g. boss door before the arena is cleared): don't burn ink on it. */
+  canPrint?: (id: string) => boolean;
 }
 
 export interface AutoplayDeps {
@@ -501,6 +503,7 @@ export class AutoplayBot {
     if (!this.printing) {
       for (const sk of this.level.sketches ?? []) {
         if (this.printed.has(sk.id) || (this.retryAt.get(sk.id) ?? 0) > this.time) continue;
+        if (this.level.canPrint && !this.level.canPrint(sk.id)) continue;
         const dx = sk.at[0] - px;
         const dz = sk.at[2] - pz;
         if (dx * dx + dz * dz < 7 * 7) {

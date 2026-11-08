@@ -40,15 +40,17 @@ export const LEVEL2: LevelDef = {
   checkpoints: [
     { id: 'p2_start', at: [0, 0, 1.5] },
     { id: 'p2_terrace', at: [-2, 2.2, -51] },
+    { id: 'p2_gate', at: [-0.8, 2.2, -97] },
   ],
   spawns: [
     { kind: 'scribbler', at: [-11, -31], trigger: 'p2_glade' },
     { kind: 'scribbler', at: [-1, -32.5], trigger: 'p2_glade' },
     { kind: 'smudge', at: [-10, -22], trigger: 'p2_glade' },
     { kind: 'scribbler', at: [0.5, -84], trigger: 'p2_corridor' },
-    { kind: 'smudge', at: [-4.5, -96], trigger: 'p2_gate_ambush' },
-    { kind: 'smudge', at: [3.5, -97], trigger: 'p2_gate_ambush' },
-    { kind: 'scribbler', at: [2, -104], trigger: 'p2_gate_ambush' },
+    // the ambush comes from the near side: nothing may shoot over a closed gate it can't be hit through
+    { kind: 'smudge', at: [-4.5, -87], trigger: 'p2_gate_ambush' },
+    { kind: 'smudge', at: [3.8, -88.5], trigger: 'p2_gate_ambush' },
+    { kind: 'scribbler', at: [3.6, -82.5], trigger: 'p2_gate_ambush' },
     { kind: 'scribbler', at: [7, -117], trigger: 'p2_mist' },
     { kind: 'smudge', at: [-4, -115], trigger: 'p2_mist' },
     { kind: 'smudge', at: [6, -109], trigger: 'p2_mist' },
@@ -95,6 +97,7 @@ export const LEVEL2: LevelDef = {
       rect: [-0.5, -62, 3, -59],
       action: { type: 'music', layer: 'combat', level: 0.5 },
     },
+    { id: 'p2_gate', rect: [-3, -99, 2, -95.5], action: { type: 'checkpoint' } },
     { id: 'p2_mist', rect: [-1, -105.5, 4, -102.5], action: { type: 'spawn' } },
     {
       id: 'p2_music_mist',
@@ -126,7 +129,7 @@ export const LEVEL2: LevelDef = {
   fog: { near: 12.5, far: 28 },
   inkWells: [
     [-1.5, -23, 35],
-    [-5.8, -39.2, 40],
+    [-3.6, -39.4, 45],
     [3.6, -57.2, 30],
     [0.6, -86.8, 40],
   ],

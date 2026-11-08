@@ -79,6 +79,11 @@ export function installLevel(
     },
   });
 
+  // a fully cleared encounter fires `<trigger>_cleared` (gates SketchObjectDef.requires, e.g. the boss door)
+  const offCleared = ctx.events.on('wave:cleared', (e) => {
+    if (e.last && e.trigger) ctx.events.emit('trigger:fired', { id: `${e.trigger}_cleared` });
+  });
+
   const sample: CrystalSample = { held: false, x: 0, z: 0, radius: 0 };
   const addEnergy = (n: number) => ctx.player?.addEnergy(n);
 
@@ -118,6 +123,7 @@ export function installLevel(
       ctx.render.renderer.getDrawingBufferSize(resolution);
     },
     dispose() {
+      offCleared();
       for (const h of beaconHandles) ctx.reveal.removeSource(h);
       sketches.dispose();
       checkpoints.dispose();

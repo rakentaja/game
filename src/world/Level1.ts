@@ -34,7 +34,10 @@ export const LEVEL1: LevelDef = {
     [0, -107, 6],
   ],
   playerStart: { at: [0, 0, 1.5], rotY: 0 },
-  checkpoints: [{ id: 'p1_start', at: [0, 0, 1.5] }],
+  checkpoints: [
+    { id: 'p1_start', at: [0, 0, 1.5] },
+    { id: 'p1_bridge', at: [-1.2, 0, -47] },
+  ],
   spawns: [
     { kind: 'smudge', at: [-8.5, -34], trigger: 'p1_hollow' },
     { kind: 'smudge', at: [4, -36.5], trigger: 'p1_hollow' },
@@ -63,6 +66,7 @@ export const LEVEL1: LevelDef = {
       action: { type: 'music', layer: 'combat', level: 0.6 },
     },
     { id: 'p1_hint_bolt', rect: [-6, -33, 1, -29], action: { type: 'tutorial', hint: 'bolt' } },
+    { id: 'p1_bridge', rect: [-5, -49, 2, -45], action: { type: 'checkpoint' } },
     { id: 'p1_music_calm', rect: [-6, -46, 2, -43], action: { type: 'music', layer: 'combat', level: 0 } },
     { id: 'p1_hint_print', rect: [-3, -53, 3, -50], action: { type: 'tutorial', hint: 'print' } },
     { id: 'p1_end', rect: [-4, -111, 4, -104], action: { type: 'pageEnd' } },
@@ -88,7 +92,7 @@ export const LEVEL1: LevelDef = {
   fog: { near: 13, far: 30 },
   inkWells: [
     [-6.8, -30, 40],
-    [2.2, -51.2, 40],
+    [0.3, -50.6, 40],
   ],
   mist: [
     [1.5, -2.5, 4.5],

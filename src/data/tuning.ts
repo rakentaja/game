@@ -114,7 +114,7 @@ export const TUNING = {
     wellRadius: 1.3,
     wellRevealRadius: 2.2,
     /** Seconds for a drained ink well to refill (keeps prints solvable, no softlocks). */
-    wellRefill: 22,
+    wellRefill: 16,
   },
   checkpoint: { respawnDelay: 1.6, reprintTurn: 0.6, refillPages: true },
   enemies: {

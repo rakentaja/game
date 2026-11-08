@@ -152,7 +152,8 @@ export function buildLayout(def: LevelDef, path: PathSampler): Layout {
         twist: range(rnd, 0, Math.PI * 2),
         leanX: (hit.px - tx) / off,
         leanZ: (hit.pz - tz) / off,
-        lean: stump ? 0 : range(rnd, 0.08, 0.3),
+        // edge trunks stand close to the walk: keep them fairly upright so they frame, not cover
+        lean: stump ? 0 : range(rnd, 0.04, 0.14),
         stump,
         detail: 1,
         seed: Math.floor(rnd() * 1e9),
