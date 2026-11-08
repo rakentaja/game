@@ -401,6 +401,11 @@ export function createSketchVisual(def: SketchObjectDef, deps: SketchVisualDeps)
       pencil.uniforms.uProgress.value = t;
       if (ringMat) ringMat.uniforms.uProgress.value = t * 0.5;
     },
+    setEnabled(on) {
+      if (ring) ring.visible = on;
+      // a dormant sketch is barely there: a ghost of a plan, not yet something you can print
+      pencil.uniforms.uFade.value = on ? 0 : 0.7;
+    },
     stamp() {
       stampT = 0;
       fill.geometry.setDrawRange(0, Infinity);

@@ -248,7 +248,11 @@ export class Game {
     if (FLAGS.autoplay) {
       this.bot = installAutoplay(
         this.ctx,
-        { path: def.path, sketches: def.sketches.map((s) => ({ id: s.id, at: s.at })) },
+        {
+          path: def.path,
+          sketches: def.sketches.map((s) => ({ id: s.id, at: s.at })),
+          canPrint: (id) => this.level?.sketches.isEnabled(id) ?? true,
+        },
         this.rig,
       );
     }
@@ -326,6 +330,11 @@ export class Game {
       this.saveData.lastCheckpoint = { page: this.page, id };
       save(SAVE_KEY, this.saveData);
     });
+    ev.on('player:respawn', () => {
+      // fresh encounters after a reprint: no ghosts camping the checkpoint, fights replay from their triggers
+      this.enemies.clear();
+      if (this.level && this.page !== 'boss') this.spawner.load(this.level.def);
+    });
     ev.on('player:died', () => {
       this.ctx.stats.deaths++;
     });
@@ -365,8 +374,7 @@ export class Game {
   private step(dt: number): void {
     if (this.mode === 'boot' || this.paused) return;
     const ctx = this.ctx;
-    ctx.input.poll();
-    if (this.bot) this.bot.drive(ctx.input.state, dt);
+    ctx.input.poll(); // the autoplay bot (if any) drives input.state from inside poll()
     this.player.step(dt);
     this.combat.step(dt);
     this.pickups.step(dt, this.player, (n) => this.energy.add(n));

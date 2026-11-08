@@ -17,6 +17,8 @@ export interface SketchVisual {
   /** Called once when the print completes. */
   stamp(): void;
   update(dt: number, time: number): void;
+  /** Dormant sketches (`requires` not met) draw faint, without the reach ring. */
+  setEnabled?(on: boolean): void;
   dispose(): void;
 }
 
@@ -62,7 +64,11 @@ export class SketchObjects {
     } = {},
   ) {
     this.offTrigger = events.on('trigger:fired', ({ id }) => {
-      for (const e of this.list) if (e.def.requires === id) e.enabled = true;
+      for (const e of this.list)
+        if (e.def.requires === id && !e.enabled) {
+          e.enabled = true;
+          e.visual?.setEnabled?.(true);
+        }
     });
   }
 
@@ -78,6 +84,7 @@ export class SketchObjects {
       visual: this.opts.visuals?.(def) ?? null,
       revealHandle: -1,
     });
+    if (def.requires) this.list[this.list.length - 1]!.visual?.setEnabled?.(false);
   }
 
   remove(id: string): void {
@@ -91,7 +98,10 @@ export class SketchObjects {
 
   enable(id: string, on = true): void {
     const e = this.find(id);
-    if (e) e.enabled = on;
+    if (e) {
+      e.enabled = on;
+      e.visual?.setEnabled?.(on);
+    }
   }
 
   /** 0..1 progress, or -1 if unknown. */

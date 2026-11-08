@@ -30,16 +30,19 @@ export const LEVEL3: LevelDef = {
     [0, -76, 5],
   ],
   playerStart: { at: [0, 0, 1.5], rotY: 0 },
-  checkpoints: [{ id: 'p3_start', at: [0, 0, 1.5] }],
+  checkpoints: [
+    { id: 'p3_start', at: [0, 0, 1.5] },
+    { id: 'p3_arena_gate', at: [-1, 0, -35] },
+  ],
   spawns: [
     { kind: 'blot', at: [5, -26], trigger: 'p3_trail' },
     { kind: 'blot', at: [-8, -55], trigger: 'p3_arena', wave: 1 },
     { kind: 'smudge', at: [8, -47], trigger: 'p3_arena', wave: 1 },
     { kind: 'smudge', at: [-7, -44], trigger: 'p3_arena', wave: 1 },
-    { kind: 'blot', at: [0, -59], trigger: 'p3_arena', wave: 2 },
-    { kind: 'scribbler', at: [-9, -50], trigger: 'p3_arena', wave: 2 },
-    { kind: 'scribbler', at: [9, -52], trigger: 'p3_arena', wave: 2 },
-    { kind: 'smudge', at: [-4, -42], trigger: 'p3_arena', wave: 2 },
+    // wave 2 closes in from the flanks of the north rim (within aggro of the door, never on its line)
+    { kind: 'blot', at: [7, -53], trigger: 'p3_arena', wave: 2 },
+    { kind: 'scribbler', at: [-8.5, -52], trigger: 'p3_arena', wave: 2 },
+    { kind: 'smudge', at: [-5.5, -56.5], trigger: 'p3_arena', wave: 2 },
   ],
   sketches: [
     {
@@ -58,6 +61,7 @@ export const LEVEL3: LevelDef = {
     { id: 'p3_start', rect: [-3, -2, 3, 5], action: { type: 'checkpoint' } },
     { id: 'p3_trail', rect: [-1, -16, 5, -13], action: { type: 'spawn' } },
     { id: 'p3_music_trail', rect: [-1, -16, 5, -13], action: { type: 'music', layer: 'combat', level: 0.5 } },
+    { id: 'p3_arena_gate', rect: [-4, -37, 2, -33], action: { type: 'checkpoint' } },
     { id: 'p3_arena', rect: [-3, -42, 3, -39], action: { type: 'spawn' } },
     { id: 'p3_arena_cut', rect: [-3, -42, 3, -39], action: { type: 'panelCut', word: 'blot' } },
     { id: 'p3_music_arena', rect: [-3, -42, 3, -39], action: { type: 'music', layer: 'combat', level: 1 } },
@@ -89,8 +93,10 @@ export const LEVEL3: LevelDef = {
   fog: { near: 12.5, far: 27 },
   inkWells: [
     [-2.8, -21.5, 35],
-    [-9.4, -47.5, 30],
-    [9.2, -54, 30],
+    [-9.4, -47.5, 40],
+    [9.2, -54, 40],
+    // on the walk line just before the door: Blots leave you dry right when the print needs ink
+    [0, -61.2, 45],
   ],
   mist: [
     [0, -50, 9],

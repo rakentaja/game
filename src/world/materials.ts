@@ -135,7 +135,7 @@ export function createMistMaterial(shared: SharedLike): THREE.ShaderMaterial {
         float d = length(uCrystalPos - vW);
         float lit = 1.0 - smoothstep(2.5, 9.0, d);
         float core = 1.0 - smoothstep(0.55, 0.8, r);
-        float cover = mix(0.22, 0.5, core);
+        float cover = mix(0.16, 0.4, core);
         if (bayer(gl_FragCoord.xy) > cover) discard;
         vec3 c = mix(uMid, uPale, core);
         c = mix(c, uWarm, lit * 0.45 * core);

@@ -20,6 +20,8 @@ import type { Tuning } from '../data/tuning';
 export interface AutoplayLevel {
   path: Vec2T[];
   sketches?: { id: string; at: Vec3T }[];
+  /** False while a sketch is dormant (e.g. boss door before the arena is cleared): don't burn ink on it. */
+  canPrint?: (id: string) => boolean;
 }
 
 export interface AutoplayDeps {
@@ -49,6 +51,7 @@ export class AutoplayBot {
   private printing: string | null = null;
   private printT = 0;
   private printed = new Set<string>();
+  private retryAt = new Map<string, number>();
   private stuckT = 0;
   private stuckX = 0;
   private stuckZ = 0;
@@ -144,7 +147,8 @@ export class AutoplayBot {
     // ── sketch objects: stand near and hold the crystal until printed
     if (!this.printing) {
       for (const sk of this.level.sketches ?? []) {
-        if (this.printed.has(sk.id)) continue;
+        if (this.printed.has(sk.id) || (this.retryAt.get(sk.id) ?? 0) > this.time) continue;
+        if (this.level.canPrint && !this.level.canPrint(sk.id)) continue;
         const dx = sk.at[0] - px;
         const dz = sk.at[2] - pz;
         if (dx * dx + dz * dz < 6 * 6) {
@@ -159,7 +163,8 @@ export class AutoplayBot {
       const sk = this.level.sketches?.find((k) => k.id === this.printing);
       this.printT += dt;
       if (!sk || this.printT > 8) {
-        if (sk) this.printed.add(sk.id); // give up, keep moving
+        // not printable yet (dormant door, out of ink): fight/refill, then come back and retry
+        if (sk) this.retryAt.set(sk.id, this.time + 5);
         this.printing = null;
       } else {
         const dx = sk.at[0] - px;
