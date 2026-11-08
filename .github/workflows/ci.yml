@@ -1,8 +1,20 @@
 name: ci
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      playthrough:
+        description: Also run the full autoplay playthrough (≈15 min on software GL)
+        type: boolean
+        default: false
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -13,5 +25,23 @@ jobs:
       - run: bun run assets:validate
       - run: bun run build
       - run: bun scripts/bundle-size.ts
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-${{ runner.os }}-${{ hashFiles('bun.lock') }}
       - run: bunx playwright install --with-deps chromium
-      - run: bun run e2e
+      # The autoplay playthrough needs real-time frame rates; CI's SwiftShader renders at ~6 fps,
+      # so it runs only on demand (workflow_dispatch) and locally (`bun run e2e`).
+      - name: e2e (smoke + visual)
+        run: bunx playwright test --grep-invert "autoplay completes"
+      - name: e2e (full playthrough)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.playthrough }}
+        run: bunx playwright test tests/e2e/playthrough.spec.ts --project=iphone14
+        timeout-minutes: 20
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-results
+          path: test-results/
+          retention-days: 7

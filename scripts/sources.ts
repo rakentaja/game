@@ -114,56 +114,6 @@ export const SOURCES: Source[] = [
     kind: { type: 'url', url: 'https://ambientcg.com/get?file=Paper003_1K-JPG.zip' },
     unzip: true,
   },
-  {
-    id: 'font-bangers',
-    title: 'Bangers',
-    author: 'Vernon Adams',
-    page: 'https://fonts.google.com/specimen/Bangers',
-    license: 'OFL-1.1',
-    licenseUrl:
-      'https://raw.githubusercontent.com/google/fonts/c13390277dfb1fcc7415d84ef7ef9cfc1e52f8c1/ofl/bangers/OFL.txt',
-    kind: {
-      type: 'url',
-      url: 'https://raw.githubusercontent.com/google/fonts/c13390277dfb1fcc7415d84ef7ef9cfc1e52f8c1/ofl/bangers/Bangers-Regular.ttf',
-    },
-  },
-  {
-    id: 'font-bangers-ofl',
-    title: 'Bangers OFL licence text',
-    author: 'Vernon Adams',
-    page: 'https://fonts.google.com/specimen/Bangers',
-    license: 'OFL-1.1',
-    licenseUrl: 'https://openfontlicense.org',
-    kind: {
-      type: 'url',
-      url: 'https://raw.githubusercontent.com/google/fonts/c13390277dfb1fcc7415d84ef7ef9cfc1e52f8c1/ofl/bangers/OFL.txt',
-    },
-  },
-  {
-    id: 'font-comicneue',
-    title: 'Comic Neue Bold',
-    author: 'Craig Rozynski, Hrant Papazian',
-    page: 'https://fonts.google.com/specimen/Comic+Neue',
-    license: 'OFL-1.1',
-    licenseUrl:
-      'https://raw.githubusercontent.com/google/fonts/3dd78844021e948ceb633d1dcee3f7885561b5d9/ofl/comicneue/OFL.txt',
-    kind: {
-      type: 'url',
-      url: 'https://raw.githubusercontent.com/google/fonts/3dd78844021e948ceb633d1dcee3f7885561b5d9/ofl/comicneue/ComicNeue-Bold.ttf',
-    },
-  },
-  {
-    id: 'font-comicneue-ofl',
-    title: 'Comic Neue OFL licence text',
-    author: 'Craig Rozynski, Hrant Papazian',
-    page: 'https://fonts.google.com/specimen/Comic+Neue',
-    license: 'OFL-1.1',
-    licenseUrl: 'https://openfontlicense.org',
-    kind: {
-      type: 'url',
-      url: 'https://raw.githubusercontent.com/google/fonts/3dd78844021e948ceb633d1dcee3f7885561b5d9/ofl/comicneue/OFL.txt',
-    },
-  },
 ];
 
 export function sourceById(id: string): Source {

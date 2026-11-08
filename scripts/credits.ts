@@ -1,78 +1,168 @@
 /**
- * Generate CREDITS.md and public/assets/credits.json (for the in-game Credits screen) from
- * assets/licenses.json. Attribution is listed for every third-party source, required or not.
+ * Generate CREDITS.md and public/assets/credits.json (read by the in-game Credits screen,
+ * src/ui/screens/credits.ts) from assets/licenses.json — one source of truth, so the three always
+ * match 1:1 (tests/unit/credits.test.ts enforces it).
+ *
+ * credits.json shape: { sections: [{ title, items: [{ name, author, license, url }] }] }
+ * Font items use the bare family name ("Bangers") so the UI can de-duplicate its own font list.
  */
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SOURCES } from './sources';
 
-const ROOT = join(import.meta.dirname, '..');
-const lic = (await Bun.file(join(ROOT, 'assets/licenses.json')).json()) as {
-  assets: { file: string; id: string; title: string; license: string; components: { source: string }[] }[];
-};
+export interface CreditItem {
+  name: string;
+  author?: string;
+  license: string;
+  url?: string;
+  /** Shipped files / asset ids this credit covers. */
+  usedIn: string[];
+}
+export interface CreditSection {
+  title: string;
+  items: CreditItem[];
+}
 
-const used = new Map<string, Set<string>>();
-for (const a of lic.assets)
-  for (const c of a.components) {
-    if (c.source === 'original') continue;
-    if (!used.has(c.source)) used.set(c.source, new Set());
-    used.get(c.source)!.add(a.id);
-  }
+interface LicEntry {
+  file: string;
+  id?: string;
+  title?: string;
+  author?: string;
+  license: string;
+  source?: string;
+  url?: string;
+  components?: { source: string; license: string }[];
+}
 
-const NAMES: Record<string, string> = {
+const LICENSE_NAMES: Record<string, string> = {
   'CC0-1.0': 'CC0 1.0 (public domain)',
   'OFL-1.1': 'SIL Open Font License 1.1',
   'CC-BY-4.0': 'CC BY 4.0',
   'CC-BY-3.0': 'CC BY 3.0',
+  MIT: 'MIT',
+  'Apache-2.0': 'Apache 2.0',
+  Original: 'Original work',
+};
+const LICENSE_URLS: Record<string, string> = {
+  'CC0-1.0': 'https://creativecommons.org/publicdomain/zero/1.0/',
+  'OFL-1.1': 'https://openfontlicense.org',
 };
 
-const sources = SOURCES.filter((s) => used.has(s.id) && !s.id.endsWith('-ofl'));
-// group by author
-const byAuthor = new Map<string, typeof sources>();
-for (const s of sources) {
-  const k = s.author;
-  byAuthor.set(k, [...(byAuthor.get(k) ?? []), s]);
+/** Family name from "Bangers (latin-ext)". */
+const family = (t: string) => t.replace(/\s*\(.*\)\s*$/, '').trim();
+
+export function buildCredits(entries: LicEntry[]): CreditSection[] {
+  const models = new Map<string, CreditItem>();
+  const textures = new Map<string, CreditItem>();
+  const original: string[] = [];
+  const fonts = new Map<string, CreditItem>();
+  const audio = new Map<string, CreditItem>();
+
+  for (const e of entries) {
+    if (e.file.startsWith('assets/')) {
+      const used = e.id ?? e.file;
+      for (const c of e.components ?? []) {
+        if (c.source === 'original') {
+          original.push(used);
+          continue;
+        }
+        const s = SOURCES.find((x) => x.id === c.source);
+        if (!s) throw new Error(`credits: unknown source ${c.source} in ${e.file}`);
+        const map = s.id.startsWith('ambientcg') ? textures : models;
+        const it = map.get(s.id) ?? {
+          name: s.title,
+          author: s.author,
+          license: s.license,
+          url: s.page,
+          usedIn: [],
+        };
+        if (!it.usedIn.includes(used)) it.usedIn.push(used);
+        map.set(s.id, it);
+      }
+    } else if (e.file.startsWith('fonts/')) {
+      const name = family(e.title ?? e.file);
+      const it = fonts.get(name) ?? {
+        name,
+        author: e.author,
+        license: e.license,
+        url: e.source ?? e.url,
+        usedIn: [],
+      };
+      it.usedIn.push(e.file);
+      fonts.set(name, it);
+    } else {
+      const name = e.title ?? e.file;
+      audio.set(name, {
+        name,
+        author: e.author,
+        license: e.license,
+        url: e.source ?? e.url,
+        usedIn: [e.file],
+      });
+    }
+  }
+  if (!audio.size)
+    audio.set('sfx', {
+      name: 'Sound effects & music',
+      author: 'INKWAKE — synthesised in code at runtime (src/audio)',
+      license: 'Original',
+      usedIn: ['src/audio'],
+    });
+  const sections: CreditSection[] = [
+    { title: '3D models & animation', items: [...models.values()] },
+    { title: 'Textures', items: [...textures.values()] },
+    { title: 'Fonts', items: [...fonts.values()] },
+    { title: 'Audio', items: [...audio.values()] },
+    {
+      title: 'Original work',
+      items: [
+        {
+          name: 'Eraser, tree stumps, editor visor & pencil, authored wizard clips',
+          author: 'INKWAKE (scripts/build/originals.ts, scripts/build/wizard.ts)',
+          license: 'Original',
+          usedIn: [...new Set(original)],
+        },
+      ],
+    },
+  ];
+  for (const s of sections) for (const i of s.items) i.usedIn.sort();
+  return sections.filter((s) => s.items.length);
 }
 
-const json = {
-  generated: 'scripts/credits.ts',
-  credits: [...byAuthor.entries()].map(([author, list]) => ({
-    author,
-    works: list.map((s) => ({
-      title: s.title,
-      license: s.license,
-      licenseName: NAMES[s.license] ?? s.license,
-      licenseUrl: s.licenseUrl,
-      url: s.page,
-      usedIn: [...used.get(s.id)!].sort(),
-    })),
-  })),
-  original: lic.assets.filter((a) => a.components.some((c) => c.source === 'original')).map((a) => a.id),
-};
-
-const md = [
-  '# Credits',
-  '',
-  'INKWAKE uses the following third-party assets. Thank you!',
-  'Generated by `bun scripts/credits.ts` from `assets/licenses.json` — do not edit by hand.',
-  '',
-  ...[...byAuthor.entries()].flatMap(([author, list]) => [
-    `## ${author}`,
+export function creditsMarkdown(sections: CreditSection[]): string {
+  const line = (i: CreditItem) => {
+    const lic = LICENSE_NAMES[i.license] ?? i.license;
+    const licUrl = LICENSE_URLS[i.license];
+    return `- **${i.name}**${i.author ? ` — ${i.author}` : ''} — ${licUrl ? `[${lic}](${licUrl})` : lic}${i.url ? ` — <${i.url}>` : ''} — used in: ${i.usedIn.join(', ')}`;
+  };
+  return [
+    '# Credits',
     '',
-    ...list.map(
-      (s) =>
-        `- **${s.title}** — [${NAMES[s.license] ?? s.license}](${s.licenseUrl}) — <${s.page}> — used in: ${[...used.get(s.id)!].sort().join(', ')}`,
-    ),
+    'INKWAKE — Issue #1: The Unprinted Wood. Thank you to everyone whose work made it possible.',
     '',
-  ]),
-  '## Original',
-  '',
-  `Made for INKWAKE (procedural, scripts/build/originals.ts): eraser, tree stumps, editor visor and pencil, authored clips (wizard hold/victory/look-around/kneel). Assets containing original work: ${json.original.join(', ')}.`,
-  '',
-  'Fonts are distributed with their licence texts (public/assets/font_*_license.*.txt).',
-  '',
-].join('\n');
+    'Generated by `bun scripts/credits.ts` from `assets/licenses.json`; the in-game Credits screen',
+    'reads the same data (`public/assets/credits.json`). Do not edit by hand.',
+    '',
+    ...sections.flatMap((s) => [`## ${s.title}`, '', ...s.items.map(line), '']),
+    '## Made with',
+    '',
+    '- **three.js** — three.js authors — MIT — <https://threejs.org>',
+    '',
+    'Fonts ship with their SIL OFL 1.1 licence texts (`public/fonts/OFL-*.txt`).',
+    '',
+  ].join('\n');
+}
 
-writeFileSync(join(ROOT, 'CREDITS.md'), md);
-writeFileSync(join(ROOT, 'public/assets/credits.json'), `${JSON.stringify(json, null, 2)}\n`);
-console.log(`✓ CREDITS.md + public/assets/credits.json (${sources.length} sources)`);
+if (import.meta.main) {
+  const ROOT = join(import.meta.dirname, '..');
+  const lic = (await Bun.file(join(ROOT, 'assets/licenses.json')).json()) as { assets: LicEntry[] };
+  const sections = buildCredits(lic.assets);
+  writeFileSync(join(ROOT, 'CREDITS.md'), creditsMarkdown(sections));
+  writeFileSync(
+    join(ROOT, 'public/assets/credits.json'),
+    `${JSON.stringify({ generated: 'scripts/credits.ts', sections }, null, 2)}\n`,
+  );
+  console.log(
+    `✓ CREDITS.md + public/assets/credits.json (${sections.reduce((n, s) => n + s.items.length, 0)} credits)`,
+  );
+}

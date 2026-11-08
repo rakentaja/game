@@ -41,30 +41,6 @@
     "file": "get?file=Paper003_1K-JPG.zip",
     "fetched": "2026-11-08"
   },
-  "font-bangers": {
-    "sha256": "4160a7311de9342674cce9160cde9fcbb30f48190397d86ff1b70b455af65824",
-    "bytes": 93148,
-    "file": "Bangers-Regular.ttf",
-    "fetched": "2026-11-08"
-  },
-  "font-bangers-ofl": {
-    "sha256": "630dd5a307c0657b094d324e069b390edf90182fe5003639e06c02a0e5769af7",
-    "bytes": 4479,
-    "file": "OFL.txt",
-    "fetched": "2026-11-08"
-  },
-  "font-comicneue": {
-    "sha256": "3e7e5fccfd7e0788f317b43312151c1bd5cf058c9697a8d83eac3939050bd61e",
-    "bytes": 55716,
-    "file": "ComicNeue-Bold.ttf",
-    "fetched": "2026-11-08"
-  },
-  "font-comicneue-ofl": {
-    "sha256": "7c38a22e5878e60fe423360553e63dd7be23d29f1f60336034935dbfc96e8320",
-    "bytes": 4390,
-    "file": "OFL.txt",
-    "fetched": "2026-11-08"
-  },
   "quaternius-nature": {
     "sha256": "298f6732b872e4cf7b30e6e7abf9641c7f6dc6b326df37ac089533ed7e3d58c9",
     "bytes": 104088529,

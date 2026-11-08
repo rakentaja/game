@@ -83,32 +83,4 @@ export const CATALOG: CatalogEntry[] = [
     build: 'paper_grain_512.webp',
     sources: ['ambientcg-paper003'],
   },
-  {
-    id: 'font_bangers',
-    type: 'font',
-    title: 'Bangers (display font)',
-    copy: { source: 'font-bangers', file: 'Bangers-Regular.ttf', ext: 'ttf' },
-    sources: ['font-bangers'],
-  },
-  {
-    id: 'font_bangers_license',
-    type: 'license-text',
-    title: 'Bangers SIL OFL 1.1',
-    copy: { source: 'font-bangers-ofl', file: 'OFL.txt', ext: 'txt' },
-    sources: ['font-bangers-ofl'],
-  },
-  {
-    id: 'font_comicneue',
-    type: 'font',
-    title: 'Comic Neue Bold (body font)',
-    copy: { source: 'font-comicneue', file: 'ComicNeue-Bold.ttf', ext: 'ttf' },
-    sources: ['font-comicneue'],
-  },
-  {
-    id: 'font_comicneue_license',
-    type: 'license-text',
-    title: 'Comic Neue SIL OFL 1.1',
-    copy: { source: 'font-comicneue-ofl', file: 'OFL.txt', ext: 'txt' },
-    sources: ['font-comicneue-ofl'],
-  },
 ];

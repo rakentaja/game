@@ -1,24 +1,22 @@
 {
   "generated": "scripts/credits.ts",
-  "credits": [
+  "sections": [
     {
-      "author": "Quaternius",
-      "works": [
+      "title": "3D models & animation",
+      "items": [
         {
-          "title": "Wizard (RPG Character Pack)",
+          "name": "Wizard (RPG Character Pack)",
+          "author": "Quaternius",
           "license": "CC0-1.0",
-          "licenseName": "CC0 1.0 (public domain)",
-          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
           "url": "https://quaternius.com/packs/rpgcharacters.html",
           "usedIn": [
             "wizard"
           ]
         },
         {
-          "title": "Universal Animation Library (Standard)",
+          "name": "Universal Animation Library (Standard)",
+          "author": "Quaternius",
           "license": "CC0-1.0",
-          "licenseName": "CC0 1.0 (public domain)",
-          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
           "url": "https://quaternius.itch.io/universal-animation-library",
           "usedIn": [
             "editor",
@@ -26,10 +24,9 @@
           ]
         },
         {
-          "title": "Universal Animation Library 2 (Standard)",
+          "name": "Universal Animation Library 2 (Standard)",
+          "author": "Quaternius",
           "license": "CC0-1.0",
-          "licenseName": "CC0 1.0 (public domain)",
-          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
           "url": "https://quaternius.itch.io/universal-animation-library-2",
           "usedIn": [
             "editor",
@@ -37,35 +34,27 @@
           ]
         },
         {
-          "title": "Universal Base Characters (Standard)",
+          "name": "Universal Base Characters (Standard)",
+          "author": "Quaternius",
           "license": "CC0-1.0",
-          "licenseName": "CC0 1.0 (public domain)",
-          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
           "url": "https://quaternius.itch.io/universal-base-characters",
           "usedIn": [
             "editor"
           ]
         },
         {
-          "title": "Stylized Nature MegaKit (Standard)",
+          "name": "Stylized Nature MegaKit (Standard)",
+          "author": "Quaternius",
           "license": "CC0-1.0",
-          "licenseName": "CC0 1.0 (public domain)",
-          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
           "url": "https://quaternius.itch.io/stylized-nature-megakit",
           "usedIn": [
             "props_forest"
           ]
-        }
-      ]
-    },
-    {
-      "author": "Kay Lousberg (KayKit)",
-      "works": [
+        },
         {
-          "title": "KayKit Halloween Bits 1.0",
+          "name": "KayKit Halloween Bits 1.0",
+          "author": "Kay Lousberg (KayKit)",
           "license": "CC0-1.0",
-          "licenseName": "CC0 1.0 (public domain)",
-          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
           "url": "https://kaylousberg.itch.io/halloween-bits",
           "usedIn": [
             "props_forest",
@@ -73,10 +62,9 @@
           ]
         },
         {
-          "title": "KayKit Forest Nature Pack (Free)",
+          "name": "KayKit Forest Nature Pack (Free)",
+          "author": "Kay Lousberg (KayKit)",
           "license": "CC0-1.0",
-          "licenseName": "CC0 1.0 (public domain)",
-          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
           "url": "https://kaylousberg.itch.io/kaykit-forest",
           "usedIn": [
             "props_forest"
@@ -85,13 +73,12 @@
       ]
     },
     {
-      "author": "ambientCG (Lennart Demes)",
-      "works": [
+      "title": "Textures",
+      "items": [
         {
-          "title": "Paper 003",
+          "name": "Paper 003",
+          "author": "ambientCG (Lennart Demes)",
           "license": "CC0-1.0",
-          "licenseName": "CC0 1.0 (public domain)",
-          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
           "url": "https://ambientcg.com/view?id=Paper003",
           "usedIn": [
             "paper_grain",
@@ -101,40 +88,70 @@
       ]
     },
     {
-      "author": "Vernon Adams",
-      "works": [
+      "title": "Fonts",
+      "items": [
         {
-          "title": "Bangers",
+          "name": "Bangers",
+          "author": "Vernon Adams",
           "license": "OFL-1.1",
-          "licenseName": "SIL Open Font License 1.1",
-          "licenseUrl": "https://raw.githubusercontent.com/google/fonts/c13390277dfb1fcc7415d84ef7ef9cfc1e52f8c1/ofl/bangers/OFL.txt",
-          "url": "https://fonts.google.com/specimen/Bangers",
+          "url": "https://github.com/googlefonts/bangers",
           "usedIn": [
-            "font_bangers"
+            "fonts/bangers-latin-ext.woff2",
+            "fonts/bangers-latin.woff2"
+          ]
+        },
+        {
+          "name": "Anton",
+          "author": "Vernon Adams",
+          "license": "OFL-1.1",
+          "url": "https://github.com/googlefonts/AntonFont",
+          "usedIn": [
+            "fonts/anton-latin-ext.woff2",
+            "fonts/anton-latin.woff2"
+          ]
+        },
+        {
+          "name": "Kalam",
+          "author": "Indian Type Foundry",
+          "license": "OFL-1.1",
+          "url": "https://github.com/itfoundry/kalam",
+          "usedIn": [
+            "fonts/kalam-400-latin-ext.woff2",
+            "fonts/kalam-400-latin.woff2",
+            "fonts/kalam-700-latin-ext.woff2",
+            "fonts/kalam-700-latin.woff2"
           ]
         }
       ]
     },
     {
-      "author": "Craig Rozynski, Hrant Papazian",
-      "works": [
+      "title": "Audio",
+      "items": [
         {
-          "title": "Comic Neue Bold",
-          "license": "OFL-1.1",
-          "licenseName": "SIL Open Font License 1.1",
-          "licenseUrl": "https://raw.githubusercontent.com/google/fonts/3dd78844021e948ceb633d1dcee3f7885561b5d9/ofl/comicneue/OFL.txt",
-          "url": "https://fonts.google.com/specimen/Comic+Neue",
+          "name": "Sound effects & music",
+          "author": "INKWAKE — synthesised in code at runtime (src/audio)",
+          "license": "Original",
           "usedIn": [
-            "font_comicneue"
+            "src/audio"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Original work",
+      "items": [
+        {
+          "name": "Eraser, tree stumps, editor visor & pencil, authored wizard clips",
+          "author": "INKWAKE (scripts/build/originals.ts, scripts/build/wizard.ts)",
+          "license": "Original",
+          "usedIn": [
+            "editor",
+            "eraser",
+            "props_forest",
+            "wizard"
           ]
         }
       ]
     }
-  ],
-  "original": [
-    "wizard",
-    "editor",
-    "eraser",
-    "props_forest"
   ]
 }
