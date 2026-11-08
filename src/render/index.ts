@@ -29,6 +29,9 @@ export function wordFor(ctx: Pick<GameContext, 't'> | null, key: string): string
   const k = `fx.${key}`;
   const t = ctx?.t(k);
   if (t && t !== k) return t;
+  const k2 = `onomatopoeia.${key}`; // UI i18n namespace
+  const t2 = ctx?.t(k2);
+  if (t2 && t2 !== k2) return t2;
   return WORDS[key.toLowerCase()] ?? `${key.toUpperCase()}!`;
 }
 

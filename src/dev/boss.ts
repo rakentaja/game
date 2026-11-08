@@ -64,7 +64,7 @@ ctx.player = player;
 player.god = q.get('god') === '1';
 render.scene.add(player.object);
 const ghosts = new StubGhosts(ctx, render);
-const editor = install(ctx);
+const editor = install(ctx, { loadAssets: q.get('glb') === '1' });
 
 // POC convention: fx without depth-normal edges on layer 1
 editor.particles.mesh.layers.set(1);

@@ -21,6 +21,7 @@ import {
 } from '../core/types';
 import { TUNING } from '../data/tuning';
 import { type AutoplayBot, installAutoplay } from '../debug/autoplay';
+import { attachEditorBot } from '../entities/Editor/bot';
 import { type Editor, install as installEditor } from '../entities/Editor/Editor';
 import { EnemyRenderer } from '../entities/enemies/EnemyRenderer';
 import { EnemySystem } from '../entities/enemies/EnemySystem';
@@ -251,6 +252,7 @@ export class Game {
         { path: def.path, sketches: def.sketches.map((s) => ({ id: s.id, at: s.at })) },
         this.rig,
       );
+      if (this.editor) attachEditorBot(this.bot, this.editor, this.ctx, this.rig);
     }
     this.ui.showHud();
     void this.ui.titleCard(page);
@@ -258,7 +260,11 @@ export class Game {
 
   private setupBoss(anchor: readonly number[] | undefined): void {
     if (anchor) TUNING.boss.pos = [anchor[0] ?? 0, anchor[2] ?? -11];
-    this.editor = installEditor(this.ctx, { loadAssets: false, seed: FLAGS.seed });
+    this.editor = installEditor(this.ctx, {
+      loadAssets: false,
+      seed: FLAGS.seed,
+      dropInk: (x, z, n) => this.pickups.spawn(x, this.collision.groundHeight(x, z), z, n),
+    });
     this.bossStartArmed = true;
   }
 
@@ -332,6 +338,10 @@ export class Game {
     ev.on('player:damaged', () => {
       this.ctx.stats.pagesTorn++;
     });
+    // the Blank Page wipe erases every ghost too (they'd be invisible and unhittable in it)
+    ev.on('boss:phase', (e) => {
+      if (e.phase === 3) this.enemies.clear();
+    });
     ev.on('boss:death', (e) => {
       if (e.stage === 'black') setTimeout(() => void this.toCover(), 600);
     });
@@ -366,7 +376,6 @@ export class Game {
     if (this.mode === 'boot' || this.paused) return;
     const ctx = this.ctx;
     ctx.input.poll();
-    if (this.bot) this.bot.drive(ctx.input.state, dt);
     this.player.step(dt);
     this.combat.step(dt);
     this.pickups.step(dt, this.player, (n) => this.energy.add(n));
@@ -389,6 +398,7 @@ export class Game {
       if (this.editor && this.editor.cameraWeight > 0) {
         this.bossFocus.copy(target).lerp(this.editor.focus, this.editor.cameraWeight * 0.5);
         this.rig.update(frameDt, this.bossFocus, this.player.velocity);
+        this.editor.applyCamera(this.render.camera, frameDt);
       } else this.rig.update(frameDt, target, this.player.velocity);
       this.player.faceCamera(this.render.camera);
       this.combat.render(alpha);
