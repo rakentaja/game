@@ -8,19 +8,21 @@
  */
 import { Vector3 } from 'three';
 import type { GameContext } from '../core/types';
-import { AudioEngine } from './AudioEngine';
+import { ACTIVATION_EVENTS, AudioEngine } from './AudioEngine';
 import type { TrackName } from './music/tracks';
 
 export interface InstallOptions {
   /** Pick the music track from `state:change` (title/playing/boss/cover). Default true. */
   autoMusic?: boolean;
   /**
-   * Derive combat intensity from enemy spawn/death events until someone emits an explicit
-   * `music:intensity` for the combat layer (then the explicit driver wins). Default true.
+   * Derive combat intensity from enemy spawn/reveal/death. The music follows
+   * max(level trigger `music:intensity` combat, enemy-derived level); both reset per page.
    */
   autoCombat?: boolean;
-  /** Unlock the context on the first gesture. Default true. */
+  /** Unlock the context on the first activating gesture. Default true. */
   autoUnlock?: boolean;
+  /** Comic stinger on every `fx:panelCut` (rate-limited by the bank). Default true. */
+  panelStinger?: boolean;
 }
 
 const STATE_TRACK: Record<string, TrackName | null | undefined> = {
@@ -33,6 +35,8 @@ const STATE_TRACK: Record<string, TrackName | null | undefined> = {
 };
 
 const BOSS_PHASE_LEVEL = [0.34, 0.67, 1] as const;
+/** Highest boss intensity allowed per announced phase (index = phase; 0 = not started). */
+const BOSS_PHASE_CAP = [0.49, 0.49, 0.83, 1] as const;
 
 export function install(ctx: GameContext, opts: InstallOptions = {}): () => void {
   const audio = ctx.audio;
@@ -44,8 +48,48 @@ export function install(ctx: GameContext, opts: InstallOptions = {}): () => void
 
   audio.setVolumes(ctx.settings);
 
+  // ── sketch printing: the gameplay asks for 'sketch_loop' once when printing starts; we turn
+  // that into a real loop that runs exactly while some sketch's progress is rising.
+  let sketchStop: (() => void) | null = null;
+  let sketchVol = 0.6;
+  let lastRise = 0;
+  let sketchTimer: ReturnType<typeof setInterval> | null = null;
+  const sketchT = new Map<string, number>();
+  const stopSketch = () => {
+    sketchStop?.();
+    sketchStop = null;
+    if (sketchTimer) clearInterval(sketchTimer);
+    sketchTimer = null;
+  };
+  const startSketch = () => {
+    lastRise = performance.now();
+    if (sketchStop) return;
+    sketchStop = audio.loop('sketch_loop', { volume: sketchVol });
+    sketchTimer = setInterval(() => {
+      if (performance.now() - lastRise > 220) stopSketch();
+    }, 60);
+  };
+  offs.push(
+    stopSketch,
+    ev.on('sketch:progress', (p) => {
+      if (p.id.startsWith('editor:')) return; // the Editor drives its own print loop
+      const prev = sketchT.get(p.id) ?? 0;
+      sketchT.set(p.id, p.t);
+      if (p.t > prev) startSketch(); // also restarts after a pause mid-print
+    }),
+    ev.on('sketch:printed', (p) => {
+      sketchT.delete(p.id);
+      if (!p.id.startsWith('editor:')) stopSketch();
+    }),
+  );
+
   offs.push(
     ev.on('sfx:play', (p) => {
+      if (p.id === 'sketch_loop' && !p.position) {
+        sketchVol = p.volume ?? 0.6;
+        startSketch();
+        return;
+      }
       if (engine) {
         const pos = p.position;
         engine.playAt(p.id, pos ? pos[0] : Number.NaN, pos ? pos[1] : 0, pos ? pos[2] : 0, p.volume ?? 1);
@@ -60,13 +104,26 @@ export function install(ctx: GameContext, opts: InstallOptions = {}): () => void
     }),
   );
 
-  let explicitCombat = false;
+  let bossPhaseNow = 1;
+  // combat = max(level-designer trigger, enemies in play)
+  let triggerCombat = 0;
+  let enemyCombat = 0;
+  const pushCombat = () => audio.setIntensity('combat', Math.max(triggerCombat, enemyCombat));
   offs.push(
     ev.on('music:intensity', (p) => {
-      if (p.layer === 'combat') explicitCombat = true;
-      audio.setIntensity(p.layer, p.level);
+      if (p.layer === 'combat' && opts.autoCombat !== false) {
+        triggerCombat = p.level;
+        pushCombat();
+      } else if (p.layer === 'boss') {
+        // Anyone may push boss intensity (arena triggers, the Editor), but it can never run
+        // ahead of the phase the Editor has actually announced.
+        audio.setIntensity('boss', Math.min(p.level, BOSS_PHASE_CAP[bossPhaseNow]!));
+      } else audio.setIntensity(p.layer, p.level);
     }),
   );
+  if (opts.panelStinger !== false) {
+    offs.push(ev.on('fx:panelCut', () => audio.play('panel_stinger')));
+  }
 
   offs.push(
     ev.on('settings:changed', (p) => {
@@ -76,7 +133,15 @@ export function install(ctx: GameContext, opts: InstallOptions = {}): () => void
     }),
   );
 
-  offs.push(ev.on('boss:phase', (p) => audio.setIntensity('boss', BOSS_PHASE_LEVEL[p.phase - 1] ?? 1)));
+  offs.push(
+    ev.on('boss:phase', (p) => {
+      bossPhaseNow = p.phase;
+      audio.setIntensity('boss', BOSS_PHASE_LEVEL[p.phase - 1] ?? 1);
+    }),
+    ev.on('page:start', () => {
+      bossPhaseNow = 1;
+    }),
+  );
   offs.push(ev.on('game:pause', (p) => engine?.setPaused(p.paused)));
 
   if (opts.autoMusic !== false) {
@@ -90,55 +155,62 @@ export function install(ctx: GameContext, opts: InstallOptions = {}): () => void
   }
 
   if (opts.autoCombat !== false) {
-    const alive = new Set<number>();
-    const revealed = new Set<number>();
-    const push = () => {
-      if (explicitCombat) return;
-      // revealed enemies count double: a fight you can see is louder than one you can't
-      const n = alive.size + revealed.size;
-      audio.setIntensity('combat', Math.min(1, n / 6));
+    // "Heat": fight events add, time drains (τ ≈ 6 s). Walking away from enemies you never
+    // engage lets the drums fade even though they are technically still alive.
+    let heat = 0;
+    let last = 0;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const tick = () => {
+      const now = performance.now();
+      heat *= Math.exp(-(now - last) / 6000);
+      last = now;
+      const lvl = heat < 0.04 ? 0 : Math.min(1, heat);
+      if (Math.abs(lvl - enemyCombat) > 0.02 || (lvl === 0 && enemyCombat !== 0)) {
+        enemyCombat = lvl;
+        pushCombat();
+      }
+      if (lvl === 0 && timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+    };
+    const bump = (amount: number) => {
+      tick();
+      heat = Math.min(1.6, heat + amount);
+      tick();
+      if (!timer) timer = setInterval(tick, 250);
+    };
+    const reset = () => {
+      heat = 0;
+      triggerCombat = 0;
+      tick();
     };
     offs.push(
-      ev.on('enemy:spawn', (p) => {
-        alive.add(p.id);
-        push();
+      ev.on('enemy:revealed', (p) => bump(p.first ? 0.45 : 0.2)),
+      ev.on('bolt:hit', () => bump(0.12)),
+      ev.on('enemy:died', () => bump(0.08)),
+      ev.on('player:damaged', () => bump(0.35)),
+      ev.on('page:start', reset),
+      ev.on('player:respawn', reset),
+      ev.on('state:change', (p) => {
+        if (p.to === 'title' || p.to === 'cover') reset();
       }),
-      ev.on('enemy:revealed', (p) => {
-        if (alive.has(p.id)) revealed.add(p.id);
-        push();
-      }),
-      ev.on('enemy:died', (p) => {
-        alive.delete(p.id);
-        revealed.delete(p.id);
-        push();
-      }),
-      ev.on('page:start', () => {
-        alive.clear();
-        revealed.clear();
-        push();
-      }),
-      ev.on('player:respawn', () => {
-        alive.clear();
-        revealed.clear();
-        push();
-      }),
+      () => {
+        if (timer) clearInterval(timer);
+      },
     );
   }
 
-  if (opts.autoUnlock !== false && typeof window !== 'undefined') {
+  // The engine listens for activation gestures itself (and keeps retrying after iOS
+  // interruptions); other AudioAPI implementations get a one-shot unlock here.
+  if (!engine && opts.autoUnlock !== false && typeof window !== 'undefined') {
     const unlock = () => {
       void audio.unlock();
-      removeEventListener('pointerdown', unlock, true);
-      removeEventListener('touchend', unlock, true);
-      removeEventListener('keydown', unlock, true);
+      for (const e of ACTIVATION_EVENTS) removeEventListener(e, unlock, true);
     };
-    addEventListener('pointerdown', unlock, true);
-    addEventListener('touchend', unlock, true);
-    addEventListener('keydown', unlock, true);
+    for (const e of ACTIVATION_EVENTS) addEventListener(e, unlock, true);
     offs.push(() => {
-      removeEventListener('pointerdown', unlock, true);
-      removeEventListener('touchend', unlock, true);
-      removeEventListener('keydown', unlock, true);
+      for (const e of ACTIVATION_EVENTS) removeEventListener(e, unlock, true);
     });
   }
 
