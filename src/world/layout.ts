@@ -302,4 +302,6 @@ export const PROP_BLOCK_RADIUS: Record<string, number> = {
   'proc:log': 0.5,
   'proc:page': 0,
   'proc:arch': 0.6,
+  /** Invisible blocker (boss body); radius = prop scale. */
+  'proc:blocker': 1,
 };

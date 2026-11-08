@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { GameContext, LevelDef, PageId } from '../core/types';
+import type { GameContext, LevelDef, PageId, RevealAPI } from '../core/types';
 import { Checkpoints } from '../systems/checkpoints';
 import { type CrystalSample, SketchObjects } from '../systems/sketch-objects';
 import { Triggers } from '../systems/triggers';
@@ -45,6 +45,19 @@ export function installLevel(
   });
   ctx.render.scene.add(built.root);
   ctx.collision = built.collision;
+
+  // fresh reveal history sized to this page; fog + mood from the LevelDef
+  ctx.reveal.reset();
+  const hf = built.data.height;
+  const size = Math.max(hf.maxX - hf.x0, hf.maxZ - hf.z0);
+  (
+    ctx.reveal as RevealAPI & { setHistoryBounds?: (x: number, z: number, s: number) => void }
+  ).setHistoryBounds?.(hf.x0, hf.z0, size);
+  const sh = ctx.render.shared;
+  if (sh.uFogNear) sh.uFogNear.value = def.fog.near;
+  if (sh.uFogFar) sh.uFogFar.value = def.fog.far;
+  if (def.mood?.keyDir && sh.uKeyDir) (sh.uKeyDir.value as THREE.Vector3).set(...def.mood.keyDir).normalize();
+  if (def.mood?.shadow !== undefined && sh.uShadow) sh.uShadow.value = def.mood.shadow;
 
   const beaconHandles = built.beacons.map((b) => ctx.reveal.addSource(b.x, b.z, b.r, 1e9));
   const triggers = new Triggers(def.triggers, ctx.events, def.page);

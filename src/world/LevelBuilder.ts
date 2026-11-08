@@ -303,6 +303,7 @@ export function buildLevel(def: LevelDef, opts: BuildOptions): BuiltLevel {
         }
         break;
       }
+      case 'blocker':
       case 'mushroom':
       case 'tree':
       case 'rock':
