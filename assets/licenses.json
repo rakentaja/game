@@ -236,8 +236,7 @@
           "page": "https://fonts.google.com/specimen/Comic+Neue"
         }
       ]
-  "$comment": "Every file under public/assets must have an entry here (validate.ts fails the build otherwise). Only licenses permitting commercial use.",
-  "assets": [
+    },
     {
       "file": "fonts/bangers-latin.woff2",
       "title": "Bangers (latin)",

@@ -8,7 +8,7 @@
  *  5. Animation contract — required clips exist and locomotion clips are in place.
  * Exits non-zero on any error.
  */
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
@@ -89,7 +89,12 @@ export async function validateAssets(
   const known = new Map(lic.assets.map((a) => [a.file, a]));
 
   // 1. licences
-  const files = walk(assetsDir).map((f) => relative(opt.publicDir, f).replaceAll('\\', '/'));
+  const files = ['assets', 'fonts', 'audio']
+    .map((d) => join(opt.publicDir, d))
+    .filter((d) => existsSync(d))
+    .flatMap((d) => walk(d))
+    .map((f) => relative(opt.publicDir, f).replaceAll('\\', '/'))
+    .filter((f) => !/^fonts\/OFL-.*\.txt$/.test(f));
   let total = 0;
   for (const rel of files) {
     if (GENERATED.has(rel) || rel.endsWith('.gitkeep') || rel.endsWith('.DS_Store')) continue;
