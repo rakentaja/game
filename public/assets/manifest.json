@@ -1,0 +1,1067 @@
+{
+  "version": 1,
+  "assets": {
+    "wizard": {
+      "file": "wizard.c1d11d5c5a.glb",
+      "type": "character",
+      "title": "Wizard (hero) with 14 clips",
+      "bytes": 338512,
+      "license": "Original",
+      "tris": 5376,
+      "bones": 32,
+      "clips": {
+        "wizard@idle": {
+          "duration": 3.125
+        },
+        "wizard@walk": {
+          "duration": 1.25
+        },
+        "wizard@run": {
+          "duration": 0.875
+        },
+        "wizard@hit_react": {
+          "duration": 0.625
+        },
+        "wizard@death": {
+          "duration": 1.167
+        },
+        "wizard@pickup": {
+          "duration": 1.25
+        },
+        "wizard@staff_attack": {
+          "duration": 0.75
+        },
+        "wizard@roll": {
+          "duration": 1.467
+        },
+        "wizard@dash": {
+          "duration": 1.567
+        },
+        "wizard@kneel": {
+          "duration": 3.125
+        },
+        "wizard@cast_tap": {
+          "duration": 0.822
+        },
+        "wizard@cast_hold_loop": {
+          "duration": 3.125
+        },
+        "wizard@victory": {
+          "duration": 2.4
+        },
+        "wizard@look_around": {
+          "duration": 6.25
+        }
+      },
+      "sockets": [
+        "socket_crystal",
+        "socket_staff_foot",
+        "socket_head",
+        "socket_hand_l"
+      ],
+      "materials": [
+        "robe",
+        "staff"
+      ],
+      "textures": [
+        {
+          "name": "Wizard_Texture",
+          "width": 512,
+          "height": 512,
+          "mime": "image/webp"
+        },
+        {
+          "name": "Wizard_Staff_Texture",
+          "width": 512,
+          "height": 512,
+          "mime": "image/webp"
+        }
+      ],
+      "height": 2.492
+    },
+    "editor": {
+      "file": "editor.03c53a404c.glb",
+      "type": "character",
+      "title": "THE EDITOR (boss) with 13 clips",
+      "bytes": 812364,
+      "license": "Original",
+      "tris": 14478,
+      "bones": 65,
+      "clips": {
+        "editor@idle": {
+          "duration": 2.5
+        },
+        "editor@guard": {
+          "duration": 1.667
+        },
+        "editor@walk": {
+          "duration": 1.333
+        },
+        "editor@sweep": {
+          "duration": 0.433
+        },
+        "editor@sweep_combo": {
+          "duration": 4.333
+        },
+        "editor@slam": {
+          "duration": 0.967
+        },
+        "editor@throw": {
+          "duration": 1.333
+        },
+        "editor@redraw": {
+          "duration": 2.1
+        },
+        "editor@taunt_no": {
+          "duration": 2.5
+        },
+        "editor@judge": {
+          "duration": 2.5
+        },
+        "editor@hit_react": {
+          "duration": 0.333
+        },
+        "editor@stagger": {
+          "duration": 0.833
+        },
+        "editor@death": {
+          "duration": 2.4
+        }
+      },
+      "sockets": [
+        "socket_eraser",
+        "socket_head"
+      ],
+      "materials": [
+        "brows",
+        "eyes",
+        "skin",
+        "visor_band",
+        "visor",
+        "pencil_paint",
+        "pencil_wood",
+        "pencil_lead",
+        "pencil_ferrule"
+      ],
+      "textures": [
+        {
+          "name": "T_Hair_1_BaseColor",
+          "width": 512,
+          "height": 512,
+          "mime": "image/webp"
+        },
+        {
+          "name": "T_Eye_Brown",
+          "width": 256,
+          "height": 256,
+          "mime": "image/webp"
+        },
+        {
+          "name": "T_Superhero_Male_Dark",
+          "width": 512,
+          "height": 512,
+          "mime": "image/webp"
+        }
+      ],
+      "height": 1.958
+    },
+    "eraser": {
+      "file": "eraser.a2d08bd54e.glb",
+      "type": "prop",
+      "title": "Giant eraser",
+      "bytes": 7640,
+      "license": "Original",
+      "tris": 192,
+      "sockets": [
+        "socket_erase_edge"
+      ],
+      "materials": [
+        "rubber",
+        "sleeve",
+        "band"
+      ],
+      "textures": [],
+      "bounds": {
+        "min": [
+          -0.4,
+          -0.202,
+          -0.282
+        ],
+        "max": [
+          0.553,
+          0.202,
+          0.282
+        ]
+      }
+    },
+    "rock_a": {
+      "file": "props_forest.fe7882ffef.glb",
+      "type": "prop",
+      "title": "rock_a",
+      "bytes": 0,
+      "tris": 342,
+      "node": "rock_a",
+      "pack": "props_forest",
+      "bounds": {
+        "min": [
+          -0.642,
+          0,
+          -0.595
+        ],
+        "max": [
+          0.642,
+          0.9,
+          0.595
+        ]
+      },
+      "license": "CC0-1.0"
+    },
+    "rock_b": {
+      "file": "props_forest.fe7882ffef.glb",
+      "type": "prop",
+      "title": "rock_b",
+      "bytes": 0,
+      "tris": 244,
+      "node": "rock_b",
+      "pack": "props_forest",
+      "bounds": {
+        "min": [
+          -1.044,
+          0,
+          -0.849
+        ],
+        "max": [
+          1.044,
+          1.3,
+          0.849
+        ]
+      },
+      "license": "CC0-1.0"
+    },
+    "rock_c": {
+      "file": "props_forest.fe7882ffef.glb",
+      "type": "prop",
+      "title": "rock_c",
+      "bytes": 0,
+      "tris": 522,
+      "node": "rock_c",
+      "pack": "props_forest",
+      "bounds": {
+        "min": [
+          -0.443,
+          0,
+          -0.45
+        ],
+        "max": [
+          0.443,
+          0.6,
+          0.45
+        ]
+      },
+      "license": "CC0-1.0"
+    },
+    "pebble_a": {
+      "file": "props_forest.fe7882ffef.glb",
+      "type": "prop",
+      "title": "pebble_a",
+      "bytes": 0,
+      "tris": 114,
+      "node": "pebble_a",
+      "pack": "props_forest",
+      "bounds": {
+        "min": [
+          -0.429,
+          0,
+          -0.393
+        ],
+        "max": [
+          0.429,
+          0.18,
+          0.393
+        ]
+      },
+      "license": "CC0-1.0"
+    },
+    "mushroom": {
+      "file": "props_forest.fe7882ffef.glb",
+      "type": "prop",
+      "title": "mushroom",
+      "bytes": 0,
+      "tris": 880,
+      "node": "mushroom",
+      "pack": "props_forest",
+      "bounds": {
+        "min": [
+          -0.195,
+          0,
+          -0.269
+        ],
+        "max": [
+          0.195,
+          0.32,
+          0.269
+        ]
+      },
+      "license": "CC0-1.0"
+    },
+    "mushroom_shelf": {
+      "file": "props_forest.fe7882ffef.glb",
+      "type": "prop",
+      "title": "mushroom_shelf",
+      "bytes": 0,
+      "tris": 2528,
+      "node": "mushroom_shelf",
+      "pack": "props_forest",
+      "bounds": {
+        "min": [
+          -0.356,
+          0,
+          -0.288
+        ],
+        "max": [
+          0.356,
+          0.4,
+          0.288
+        ]
+      },
+      "license": "CC0-1.0"
+    },
+    "fern": {
+      "file": "props_forest.fe7882ffef.glb",
+      "type": "prop",
+      "title": "fern",
+      "bytes": 0,
+      "tris": 288,
+      "node": "fern",
+      "pack": "props_forest",
+      "bounds": {
+        "min": [
+          -1.178,
+          0,
+          -1.105
+        ],
+        "max": [
+          1.178,
+          0.7,
+          1.105
+        ]
+      },
+      "license": "CC0-1.0"
+    },
+    "stump_a": {
+      "file": "props_forest.fe7882ffef.glb",
+      "type": "prop",
+      "title": "stump_a",
+      "bytes": 0,
+      "tris": 108,
+      "node": "stump_a",
+      "pack": "props_forest",
+      "bounds": {
+        "min": [
+          -0.528,
+          0,
+          -0.667
+        ],
+        "max": [
+          0.6,
+          0.809,
+          0.513
+        ]
+      },
+      "license": "Original"
+    },
+    "stump_b": {
+      "file": "props_forest.fe7882ffef.glb",
+      "type": "prop",
+      "title": "stump_b",
+      "bytes": 0,
+      "tris": 108,
+      "node": "stump_b",
+      "pack": "props_forest",
+      "bounds": {
+        "min": [
+          -0.348,
+          0,
+          -0.448
+        ],
+        "max": [
+          0.403,
+          0.542,
+          0.355
+        ]
+      },
+      "license": "Original"
+    },
+    "tree_dead_l": {
+      "file": "props_forest.fe7882ffef.glb",
+      "type": "prop",
+      "title": "tree_dead_l",
+      "bytes": 0,
+      "tris": 256,
+      "node": "tree_dead_l",
+      "pack": "props_forest",
+      "bounds": {
+        "min": [
+          -1.249,
+          0,
+          -0.747
+        ],
+        "max": [
+          1.249,
+          5.5,
+          0.747
+        ]
+      },
+      "license": "CC0-1.0"
+    },
+    "tree_dead_m": {
+      "file": "props_forest.fe7882ffef.glb",
+      "type": "prop",
+      "title": "tree_dead_m",
+      "bytes": 0,
+      "tris": 216,
+      "node": "tree_dead_m",
+      "pack": "props_forest",
+      "bounds": {
+        "min": [
+          -0.777,
+          0,
+          -0.201
+        ],
+        "max": [
+          0.777,
+          3.6,
+          0.201
+        ]
+      },
+      "license": "CC0-1.0"
+    },
+    "tree_dead_s": {
+      "file": "props_forest.fe7882ffef.glb",
+      "type": "prop",
+      "title": "tree_dead_s",
+      "bytes": 0,
+      "tris": 184,
+      "node": "tree_dead_s",
+      "pack": "props_forest",
+      "bounds": {
+        "min": [
+          -0.519,
+          0,
+          -0.374
+        ],
+        "max": [
+          0.519,
+          2.2,
+          0.374
+        ]
+      },
+      "license": "CC0-1.0"
+    },
+    "bush_a": {
+      "file": "props_forest.fe7882ffef.glb",
+      "type": "prop",
+      "title": "bush_a",
+      "bytes": 0,
+      "tris": 72,
+      "node": "bush_a",
+      "pack": "props_forest",
+      "bounds": {
+        "min": [
+          -0.472,
+          0,
+          -0.413
+        ],
+        "max": [
+          0.472,
+          0.8,
+          0.413
+        ]
+      },
+      "license": "CC0-1.0"
+    },
+    "props_forest": {
+      "file": "props_forest.fe7882ffef.glb",
+      "type": "prop-pack",
+      "title": "Forest props (rocks, mushrooms, stumps, dead trees, ferns, bushes)",
+      "bytes": 156756,
+      "license": "Original",
+      "tris": 5862,
+      "materials": [
+        "Rocks",
+        "PathRocks",
+        "Mushrooms",
+        "Leaves",
+        "bark",
+        "wood",
+        "HalloweenBits",
+        "forest"
+      ],
+      "textures": [
+        {
+          "name": "Rocks_Diffuse",
+          "width": 256,
+          "height": 256,
+          "mime": "image/webp"
+        },
+        {
+          "name": "PathRocks_Diffuse",
+          "width": 256,
+          "height": 256,
+          "mime": "image/webp"
+        },
+        {
+          "name": "Mushrooms",
+          "width": 256,
+          "height": 256,
+          "mime": "image/webp"
+        },
+        {
+          "name": "Leaves",
+          "width": 256,
+          "height": 256,
+          "mime": "image/webp"
+        },
+        {
+          "name": "halloweenbits_texture",
+          "width": 256,
+          "height": 256,
+          "mime": "image/webp"
+        },
+        {
+          "name": "forest_texture",
+          "width": 256,
+          "height": 256,
+          "mime": "image/webp"
+        }
+      ],
+      "bounds": {
+        "min": [
+          -1.249,
+          0,
+          -1.105
+        ],
+        "max": [
+          1.249,
+          5.5,
+          1.105
+        ]
+      }
+    },
+    "gravestone": {
+      "file": "props_graveyard.bfa54c315e.glb",
+      "type": "prop",
+      "title": "gravestone",
+      "bytes": 0,
+      "tris": 271,
+      "node": "gravestone",
+      "pack": "props_graveyard",
+      "bounds": {
+        "min": [
+          -0.437,
+          0,
+          -0.125
+        ],
+        "max": [
+          0.437,
+          1,
+          0.125
+        ]
+      },
+      "license": "CC0-1.0"
+    },
+    "grave_a": {
+      "file": "props_graveyard.bfa54c315e.glb",
+      "type": "prop",
+      "title": "grave_a",
+      "bytes": 0,
+      "tris": 323,
+      "node": "grave_a",
+      "pack": "props_graveyard",
+      "bounds": {
+        "min": [
+          -0.517,
+          0,
+          -0.258
+        ],
+        "max": [
+          0.517,
+          1.1,
+          0.258
+        ]
+      },
+      "license": "CC0-1.0"
+    },
+    "grave_b": {
+      "file": "props_graveyard.bfa54c315e.glb",
+      "type": "prop",
+      "title": "grave_b",
+      "bytes": 0,
+      "tris": 190,
+      "node": "grave_b",
+      "pack": "props_graveyard",
+      "bounds": {
+        "min": [
+          -0.5,
+          0,
+          -0.25
+        ],
+        "max": [
+          0.5,
+          1.1,
+          0.25
+        ]
+      },
+      "license": "CC0-1.0"
+    },
+    "grave_broken": {
+      "file": "props_graveyard.bfa54c315e.glb",
+      "type": "prop",
+      "title": "grave_broken",
+      "bytes": 0,
+      "tris": 416,
+      "node": "grave_broken",
+      "pack": "props_graveyard",
+      "bounds": {
+        "min": [
+          -0.395,
+          0,
+          -0.216
+        ],
+        "max": [
+          0.395,
+          0.8,
+          0.216
+        ]
+      },
+      "license": "CC0-1.0"
+    },
+    "gravemarker_a": {
+      "file": "props_graveyard.bfa54c315e.glb",
+      "type": "prop",
+      "title": "gravemarker_a",
+      "bytes": 0,
+      "tris": 56,
+      "node": "gravemarker_a",
+      "pack": "props_graveyard",
+      "bounds": {
+        "min": [
+          -0.303,
+          0,
+          -0.105
+        ],
+        "max": [
+          0.303,
+          0.9,
+          0.105
+        ]
+      },
+      "license": "CC0-1.0"
+    },
+    "gravemarker_b": {
+      "file": "props_graveyard.bfa54c315e.glb",
+      "type": "prop",
+      "title": "gravemarker_b",
+      "bytes": 0,
+      "tris": 136,
+      "node": "gravemarker_b",
+      "pack": "props_graveyard",
+      "bounds": {
+        "min": [
+          -0.306,
+          0,
+          -0.158
+        ],
+        "max": [
+          0.306,
+          0.9,
+          0.158
+        ]
+      },
+      "license": "CC0-1.0"
+    },
+    "lantern": {
+      "file": "props_graveyard.bfa54c315e.glb",
+      "type": "prop",
+      "title": "lantern",
+      "bytes": 0,
+      "tris": 264,
+      "node": "lantern",
+      "pack": "props_graveyard",
+      "bounds": {
+        "min": [
+          -0.19,
+          0,
+          -0.19
+        ],
+        "max": [
+          0.19,
+          0.55,
+          0.19
+        ]
+      },
+      "license": "CC0-1.0"
+    },
+    "lantern_post": {
+      "file": "props_graveyard.bfa54c315e.glb",
+      "type": "prop",
+      "title": "lantern_post",
+      "bytes": 0,
+      "tris": 568,
+      "node": "lantern_post",
+      "pack": "props_graveyard",
+      "bounds": {
+        "min": [
+          -0.233,
+          0,
+          -0.57
+        ],
+        "max": [
+          0.233,
+          2.4,
+          0.57
+        ]
+      },
+      "license": "CC0-1.0"
+    },
+    "lantern_hanging": {
+      "file": "props_graveyard.bfa54c315e.glb",
+      "type": "prop",
+      "title": "lantern_hanging",
+      "bytes": 0,
+      "tris": 472,
+      "node": "lantern_hanging",
+      "pack": "props_graveyard",
+      "bounds": {
+        "min": [
+          -0.136,
+          0,
+          -0.136
+        ],
+        "max": [
+          0.136,
+          0.6,
+          0.136
+        ]
+      },
+      "license": "CC0-1.0"
+    },
+    "crypt": {
+      "file": "props_graveyard.bfa54c315e.glb",
+      "type": "prop",
+      "title": "crypt",
+      "bytes": 0,
+      "tris": 952,
+      "node": "crypt",
+      "pack": "props_graveyard",
+      "bounds": {
+        "min": [
+          -1.35,
+          0,
+          -1.8
+        ],
+        "max": [
+          1.35,
+          3.6,
+          1.8
+        ]
+      },
+      "license": "CC0-1.0"
+    },
+    "ruin_arch": {
+      "file": "props_graveyard.bfa54c315e.glb",
+      "type": "prop",
+      "title": "ruin_arch",
+      "bytes": 0,
+      "tris": 436,
+      "node": "ruin_arch",
+      "pack": "props_graveyard",
+      "bounds": {
+        "min": [
+          -1.625,
+          0,
+          -0.297
+        ],
+        "max": [
+          1.625,
+          3.4,
+          0.297
+        ]
+      },
+      "license": "CC0-1.0"
+    },
+    "ruin_gate": {
+      "file": "props_graveyard.bfa54c315e.glb",
+      "type": "prop",
+      "title": "ruin_gate",
+      "bytes": 0,
+      "tris": 868,
+      "node": "ruin_gate",
+      "pack": "props_graveyard",
+      "bounds": {
+        "min": [
+          -1.625,
+          0,
+          -0.297
+        ],
+        "max": [
+          1.625,
+          3.4,
+          0.297
+        ]
+      },
+      "license": "CC0-1.0"
+    },
+    "ruin_pillar": {
+      "file": "props_graveyard.bfa54c315e.glb",
+      "type": "prop",
+      "title": "ruin_pillar",
+      "bytes": 0,
+      "tris": 94,
+      "node": "ruin_pillar",
+      "pack": "props_graveyard",
+      "bounds": {
+        "min": [
+          -0.318,
+          0,
+          -0.318
+        ],
+        "max": [
+          0.318,
+          2.8,
+          0.318
+        ]
+      },
+      "license": "CC0-1.0"
+    },
+    "shrine": {
+      "file": "props_graveyard.bfa54c315e.glb",
+      "type": "prop",
+      "title": "shrine",
+      "bytes": 0,
+      "tris": 360,
+      "node": "shrine",
+      "pack": "props_graveyard",
+      "bounds": {
+        "min": [
+          -0.461,
+          0,
+          -0.461
+        ],
+        "max": [
+          0.461,
+          1.5,
+          0.461
+        ]
+      },
+      "license": "CC0-1.0"
+    },
+    "fence": {
+      "file": "props_graveyard.bfa54c315e.glb",
+      "type": "prop",
+      "title": "fence",
+      "bytes": 0,
+      "tris": 380,
+      "node": "fence",
+      "pack": "props_graveyard",
+      "bounds": {
+        "min": [
+          -1,
+          0,
+          -0.125
+        ],
+        "max": [
+          1,
+          1.1,
+          0.125
+        ]
+      },
+      "license": "CC0-1.0"
+    },
+    "fence_broken": {
+      "file": "props_graveyard.bfa54c315e.glb",
+      "type": "prop",
+      "title": "fence_broken",
+      "bytes": 0,
+      "tris": 446,
+      "node": "fence_broken",
+      "pack": "props_graveyard",
+      "bounds": {
+        "min": [
+          -1,
+          0,
+          -0.125
+        ],
+        "max": [
+          1,
+          1.1,
+          0.125
+        ]
+      },
+      "license": "CC0-1.0"
+    },
+    "fence_pillar": {
+      "file": "props_graveyard.bfa54c315e.glb",
+      "type": "prop",
+      "title": "fence_pillar",
+      "bytes": 0,
+      "tris": 94,
+      "node": "fence_pillar",
+      "pack": "props_graveyard",
+      "bounds": {
+        "min": [
+          -0.159,
+          0,
+          -0.159
+        ],
+        "max": [
+          0.159,
+          1.4,
+          0.159
+        ]
+      },
+      "license": "CC0-1.0"
+    },
+    "skull": {
+      "file": "props_graveyard.bfa54c315e.glb",
+      "type": "prop",
+      "title": "skull",
+      "bytes": 0,
+      "tris": 344,
+      "node": "skull",
+      "pack": "props_graveyard",
+      "bounds": {
+        "min": [
+          -0.112,
+          0,
+          -0.111
+        ],
+        "max": [
+          0.112,
+          0.22,
+          0.111
+        ]
+      },
+      "license": "CC0-1.0"
+    },
+    "candles": {
+      "file": "props_graveyard.bfa54c315e.glb",
+      "type": "prop",
+      "title": "candles",
+      "bytes": 0,
+      "tris": 198,
+      "node": "candles",
+      "pack": "props_graveyard",
+      "bounds": {
+        "min": [
+          -0.086,
+          0,
+          -0.067
+        ],
+        "max": [
+          0.086,
+          0.3,
+          0.067
+        ]
+      },
+      "license": "CC0-1.0"
+    },
+    "coffin": {
+      "file": "props_graveyard.bfa54c315e.glb",
+      "type": "prop",
+      "title": "coffin",
+      "bytes": 0,
+      "tris": 316,
+      "node": "coffin",
+      "pack": "props_graveyard",
+      "bounds": {
+        "min": [
+          -0.378,
+          0,
+          -0.567
+        ],
+        "max": [
+          0.378,
+          0.5,
+          0.567
+        ]
+      },
+      "license": "CC0-1.0"
+    },
+    "props_graveyard": {
+      "file": "props_graveyard.bfa54c315e.glb",
+      "type": "prop-pack",
+      "title": "Graveyard & ruins props (graves, lanterns, crypt, arches, fences)",
+      "bytes": 160064,
+      "license": "CC0-1.0",
+      "tris": 6748,
+      "materials": [
+        "HalloweenBits"
+      ],
+      "textures": [
+        {
+          "name": "halloweenbits_texture",
+          "width": 128,
+          "height": 128,
+          "mime": "image/webp"
+        }
+      ],
+      "bounds": {
+        "min": [
+          -1.625,
+          0,
+          -1.8
+        ],
+        "max": [
+          1.625,
+          3.6,
+          1.8
+        ]
+      }
+    },
+    "paper_grain": {
+      "file": "paper_grain.d3c9e19363.webp",
+      "type": "texture",
+      "title": "Paper grain (tileable, normalised greyscale, 1024²)",
+      "bytes": 98094,
+      "license": "CC0-1.0",
+      "width": 1024
+    },
+    "paper_grain_512": {
+      "file": "paper_grain_512.ce0a1d03f9.webp",
+      "type": "texture",
+      "title": "Paper grain (tileable, normalised greyscale, 512²)",
+      "bytes": 25694,
+      "license": "CC0-1.0",
+      "width": 512
+    },
+    "font_bangers": {
+      "file": "font_bangers.4160a7311d.ttf",
+      "type": "font",
+      "title": "Bangers (display font)",
+      "bytes": 93148,
+      "license": "OFL-1.1"
+    },
+    "font_bangers_license": {
+      "file": "font_bangers_license.630dd5a307.txt",
+      "type": "license-text",
+      "title": "Bangers SIL OFL 1.1",
+      "bytes": 4479,
+      "license": "OFL-1.1"
+    },
+    "font_comicneue": {
+      "file": "font_comicneue.3e7e5fccfd.ttf",
+      "type": "font",
+      "title": "Comic Neue Bold (body font)",
+      "bytes": 55716,
+      "license": "OFL-1.1"
+    },
+    "font_comicneue_license": {
+      "file": "font_comicneue_license.7c38a22e58.txt",
+      "type": "license-text",
+      "title": "Comic Neue SIL OFL 1.1",
+      "bytes": 4390,
+      "license": "OFL-1.1"
+    }
+  }
+}

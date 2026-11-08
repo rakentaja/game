@@ -1,0 +1,74 @@
+{
+  "poc-wizard": {
+    "sha256": "b96b590bab3537eee71b0922a4b131fc534df56640aff3e73fd785f95898ea99",
+    "bytes": 1862512,
+    "file": "poc-wizard.glb",
+    "fetched": "2026-11-08"
+  },
+  "quaternius-ual1": {
+    "sha256": "cc73fc4e495b82958207316596317a3f40b9fa38065bde1027937452da537724",
+    "bytes": 15904933,
+    "file": "quaternius-ual1.bin",
+    "fetched": "2026-11-08"
+  },
+  "quaternius-ual2": {
+    "sha256": "4008ea208a604773a2b2177d965f0f5d3195498b5bf838c3f5785d68e95f2a68",
+    "bytes": 18735003,
+    "file": "quaternius-ual2.bin",
+    "fetched": "2026-11-08"
+  },
+  "quaternius-ubc": {
+    "sha256": "fdbf1804c90dfc1ea03e992bff7da2dfd1a79318e13270a660180f9308455f40",
+    "bytes": 128968391,
+    "file": "quaternius-ubc.bin",
+    "fetched": "2026-11-08"
+  },
+  "kaykit-halloween": {
+    "sha256": "17b6155ba9aab19cc0c39468c3dd6791aaa99078e44c8e76f68f7af2d1309bba",
+    "bytes": 1172887,
+    "file": "6dc69bf6b2fa766a985754f35ec6a0324090e6c6",
+    "fetched": "2026-11-08"
+  },
+  "kaykit-forest": {
+    "sha256": "2ee83e63bb7695f2d884ec27ddf6fce020789a452e7d5c5b0bbdfc4f6ea1fc8c",
+    "bytes": 6435630,
+    "file": "Free",
+    "fetched": "2026-11-08"
+  },
+  "ambientcg-paper003": {
+    "sha256": "90b44da4c960ba044b37c26713c50ef1986687a522f1bbe847aeb9b471409040",
+    "bytes": 2545301,
+    "file": "get?file=Paper003_1K-JPG.zip",
+    "fetched": "2026-11-08"
+  },
+  "font-bangers": {
+    "sha256": "4160a7311de9342674cce9160cde9fcbb30f48190397d86ff1b70b455af65824",
+    "bytes": 93148,
+    "file": "Bangers-Regular.ttf",
+    "fetched": "2026-11-08"
+  },
+  "font-bangers-ofl": {
+    "sha256": "630dd5a307c0657b094d324e069b390edf90182fe5003639e06c02a0e5769af7",
+    "bytes": 4479,
+    "file": "OFL.txt",
+    "fetched": "2026-11-08"
+  },
+  "font-comicneue": {
+    "sha256": "3e7e5fccfd7e0788f317b43312151c1bd5cf058c9697a8d83eac3939050bd61e",
+    "bytes": 55716,
+    "file": "ComicNeue-Bold.ttf",
+    "fetched": "2026-11-08"
+  },
+  "font-comicneue-ofl": {
+    "sha256": "7c38a22e5878e60fe423360553e63dd7be23d29f1f60336034935dbfc96e8320",
+    "bytes": 4390,
+    "file": "OFL.txt",
+    "fetched": "2026-11-08"
+  },
+  "quaternius-nature": {
+    "sha256": "298f6732b872e4cf7b30e6e7abf9641c7f6dc6b326df37ac089533ed7e3d58c9",
+    "bytes": 104088529,
+    "file": "Stylized Nature MegaKit[Standard].zip",
+    "fetched": "2026-11-08"
+  }
+}

@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>INKWAKE · asset harness</title>
+    <style>
+      :root {
+        --ink: #16100e;
+        --paper: #efe1c9;
+        --red: #b8655c;
+        --teal: #3c6f6a;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; background: var(--ink); color: var(--paper); font: 13px/1.35 ui-sans-serif, system-ui, sans-serif; }
+      header { position: sticky; top: 0; z-index: 4; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 10px 16px; background: #120d0cee; border-bottom: 2px solid #000; }
+      header h1 { margin: 0 12px 0 0; font: 28px/1 'Bangers', Impact, sans-serif; letter-spacing: 1px; color: var(--paper); }
+      header h1 span { color: var(--red); }
+      header label { display: inline-flex; gap: 6px; align-items: center; opacity: 0.85; }
+      #stats { margin-left: auto; opacity: 0.7; font-variant-numeric: tabular-nums; }
+      #bar { position: fixed; left: 0; top: 0; height: 3px; width: 0; background: var(--red); z-index: 9; transition: width 0.15s; }
+      #grid { position: relative; z-index: 3; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; padding: 12px 16px 40px; }
+      .cell { position: relative; aspect-ratio: 3 / 4; border: 2px solid #000; background: transparent; box-shadow: 4px 4px 0 #000; overflow: hidden; }
+      .cell.wide { grid-column: span 2; aspect-ratio: 3 / 2; }
+      .cell .view { position: absolute; inset: 0; }
+      .cell .meta { position: absolute; left: 0; right: 0; bottom: 0; padding: 6px 8px; background: linear-gradient(transparent, #000c 40%); pointer-events: none; }
+      .cell .meta b { display: block; font: 18px/1 'Bangers', Impact, sans-serif; letter-spacing: 0.5px; color: var(--paper); }
+      .cell .meta small { opacity: 0.75; }
+      .cell .lic { position: absolute; top: 6px; right: 6px; padding: 1px 5px; background: var(--teal); color: var(--paper); font-size: 10px; border: 1px solid #000; }
+      .cell select { position: absolute; top: 6px; left: 6px; max-width: 70%; background: var(--paper); color: var(--ink); border: 2px solid #000; font: 12px ui-sans-serif, system-ui; padding: 2px; pointer-events: auto; }
+      .cell.font { background: #2a2224; }
+      .cell.font .sample { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; text-align: center; color: var(--paper); }
+      canvas#gl { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 2; pointer-events: none; }
+      #err { color: #ff8b7a; padding: 16px; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <div id="bar"></div>
+    <header>
+      <h1>INK<span>WAKE</span> · assets</h1>
+      <label><input type="checkbox" id="spin" checked /> turntable</label>
+      <label><input type="checkbox" id="sockets" checked /> sockets</label>
+      <label><input type="checkbox" id="wire" /> wireframe</label>
+      <label>speed <input type="range" id="speed" min="0" max="2" step="0.05" value="1" /></label>
+      <span id="stats"></span>
+    </header>
+    <div id="grid"></div>
+    <div id="err"></div>
+    <canvas id="gl"></canvas>
+    <script type="module" src="/src/dev/assets.ts"></script>
+  </body>
+</html>
