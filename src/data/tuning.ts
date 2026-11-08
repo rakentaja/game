@@ -58,7 +58,60 @@ export const TUNING = {
     story: { damageTaken: 0.5, energyCost: 0.6 },
     normal: { damageTaken: 1, energyCost: 1 },
   },
-  quality: { targetFrameMs: 16.7, minPixelRatio: 1, maxPixelRatio: 2, revealHistorySize: 256 },
+  quality: {
+    targetFrameMs: 16.7,
+    minPixelRatio: 1,
+    maxPixelRatio: 2,
+    revealHistorySize: 256,
+    /** Adaptive pixel ratio: drop after this long over budget, raise after this long under it. */
+    downAfterS: 0.6,
+    upAfterS: 4,
+    prStep: 0.125,
+    /** Over budget = EMA frame time above target × this. Under = below target × upRatio. */
+    downRatio: 1.18,
+    upRatio: 1.06,
+  },
+  /** Reveal mask (render/reveal). Shader and CPU mirror read the same numbers. */
+  reveal: {
+    historyWorldSize: 96,
+    historyFadePerSec: 0.045,
+    historyStampHz: 20,
+    maxSources: 16,
+    /** Edge crawl speed of the fbm domain (paper wicking), lattice units / s. */
+    seepSpeed: 0.18,
+    /** Extra edge raggedness while the radius is growing (ink fingers). */
+    growthFingers: 0.9,
+    sourceGrowS: 0.22,
+    sourceFadeFrac: 0.35,
+  },
+  /** Ink look (render/post + materials). */
+  render: {
+    shadow: 0.3,
+    fogNear: 9,
+    fogFar: 26,
+    lineScreenPeriod: 3.4,
+    lineScreenAngle: 62,
+    lineScreenStrength: 0.55,
+    edgeWidthPx: 1.4,
+    /** Sobel crease threshold: 1 - cos(bend angle). 0.09 ≈ 25°. */
+    creaseAngle: 0.09,
+    hullWidthPx: 2.0,
+    grain: 0.5,
+    misregPx: 0.6,
+    vignette: 0.9,
+    rimPx: 1.6,
+    wetFrontPx: 2.5,
+    sketch: 1,
+  },
+  fx: {
+    shakeMax: 0.28,
+    shakeFreq: 22,
+    shakeDecayPerSec: 1.8,
+    splashPool: 48,
+    tearPool: 96,
+    splashLife: 0.55,
+    tearLife: 1.6,
+  },
 };
 
 export type Tuning = typeof TUNING;

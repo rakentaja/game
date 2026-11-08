@@ -117,6 +117,8 @@ export interface InkMaterialOptions {
   crumple?: number;
   /** Draw as dashed pencil sketch until printed (sketch objects). 0 = pencil, 1 = inked. */
   printed?: number;
+  /** Pencil-sketch strength while unrevealed, 0..1 (default 1; ghosts ~0.2 so they barely show). */
+  sketch?: number;
   side?: THREE.Side;
 }
 
