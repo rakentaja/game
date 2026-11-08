@@ -1,0 +1,51 @@
+:root {
+  --ink: #16100e;
+  --paper: #efe1c9;
+  --red: #b8655c;
+  --salmon: #d99682;
+  --teal: #3c6f6a;
+  --gold: #f6c35a;
+  --ember: #e2794e;
+  --void: #120d0c;
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+}
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--void);
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+body {
+  color: var(--paper);
+  font-family: system-ui, sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: none;
+}
+#app {
+  position: fixed;
+  inset: 0;
+}
+#gl {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+#ui-root {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+#ui-root > * {
+  pointer-events: auto;
+}

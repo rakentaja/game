@@ -1,0 +1,4 @@
+{
+  "$comment": "Every file under public/assets must have an entry here (validate.ts fails the build otherwise). Only licenses permitting commercial use.",
+  "assets": []
+}

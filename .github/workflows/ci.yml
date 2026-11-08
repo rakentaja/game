@@ -1,0 +1,17 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun run lint
+      - run: bun run test
+      - run: bun run assets:validate
+      - run: bun run build
+      - run: bun scripts/bundle-size.ts
+      - run: bunx playwright install --with-deps chromium
+      - run: bun run e2e

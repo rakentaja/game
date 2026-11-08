@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pulp Ink Shader — three.js POC</title>
+<style>
+  html,body{margin:0;height:100%;background:#120d0c;overflow:hidden;font:12px/1.3 ui-monospace,Menlo,Consolas,monospace;color:#e9d8c4}
+  canvas{display:block;width:100%;height:100%;touch-action:none}
+  #ui{position:fixed;top:10px;right:10px;width:220px;background:rgba(20,14,13,.86);border:1px solid #5a3a33;padding:10px 12px;border-radius:4px;max-height:calc(100% - 40px);overflow:auto}
+  #ui.hidden .body{display:none}
+  #ui h1{font-size:12px;margin:0;letter-spacing:.08em;text-transform:uppercase;color:#f2b24a;cursor:pointer;display:flex;justify-content:space-between}
+  #ui label{display:block;margin:8px 0 2px;color:#c9a99a}
+  #ui input[type=range],#ui select{width:100%;accent-color:#c57a6e;background:#241817;color:#e9d8c4;border:1px solid #5a3a33}
+  #ui .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+  #ui .row label{display:flex;align-items:center;gap:4px;margin:0}
+  #ui .file{margin-top:10px;display:block;padding:6px;border:1px dashed #5a3a33;text-align:center;cursor:pointer;color:#c9a99a}
+  #ui .file input{display:none}
+  #credit{position:fixed;left:10px;bottom:8px;color:#7d6359;font-size:11px}
+  #credit a{color:#a77f70}
+  #msg{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#c57a6e;pointer-events:none;letter-spacing:.2em}
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+}}
+</script>
+</head>
+<body>
+<div id="msg">INKING…</div>
+<div id="ui">
+  <h1 id="uiToggle"><span>Pulp ink shader</span><span>☰</span></h1>
+  <div class="body">
+    <label>Pose (animation)</label>
+    <select id="anim"></select>
+    <label>Frame <span id="frameVal"></span></label>
+    <input id="frame" type="range" min="0" max="1" step="0.001" value="0.3">
+    <div class="row"><label><input id="play" type="checkbox"> play</label><label><input id="boil" type="checkbox" checked> line boil</label><label><input id="upright" type="checkbox" checked> upright staff</label></div>
+    <label>Line screen period</label><input id="period" type="range" min="2" max="8" step="0.1" value="3.4">
+    <label>Line screen angle</label><input id="angle" type="range" min="0" max="180" step="1" value="62">
+    <label>Line screen strength</label><input id="screen" type="range" min="0" max="1" step="0.01" value="0.55">
+    <label>Outline width</label><input id="edgeW" type="range" min="0" max="3" step="0.05" value="1.4">
+    <label>Shadow threshold</label><input id="shadow" type="range" min="0.1" max="0.6" step="0.01" value="0.3">
+    <label>Paper / grain</label><input id="grain" type="range" min="0" max="1" step="0.01" value="0.5">
+    <div class="row"><label><input id="pEdge" type="checkbox" checked> ink</label><label><input id="pScreen" type="checkbox" checked> screen</label><label><input id="pPaper" type="checkbox" checked> paper</label><label><input id="pTrees" type="checkbox" checked> forest</label></div>
+    <label class="file">Drop / pick your own .glb<input id="file" type="file" accept=".glb,.gltf"></label>
+  </div>
+</div>
+<div id="credit">Model: “Wizard” by <a href="https://quaternius.com" target="_blank" rel="noopener">Quaternius</a> (CC0) · drag to orbit</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+THREE.ColorManagement.enabled = false; // palette values are used verbatim
+const $ = id => document.getElementById(id);
+const hex = h => new THREE.Color(h);
+
+// ---------- Palette (sampled from the reference) ----------
+const PAL = {
+  ink:   hex('#16100e'),
+  // character ramp (robe / skin): ink -> brick -> salmon -> pale salmon
+  red:   [hex('#16100e'), hex('#6e2f2c'), hex('#b8655c'), hex('#d99682')],
+  // forest ramp: ink -> deep teal -> teal -> pale teal
+  teal:  [hex('#111816'), hex('#1d3a38'), hex('#3c6f6a'), hex('#69a197')],
+  staff: [hex('#16100e'), hex('#2a2224'), hex('#4b3f44'), hex('#6c5d63')],
+  glowCore: hex('#f6c35a'), glowEdge: hex('#e2794e'), smoke: hex('#d27b6c'),
+  paper: hex('#efe1c9')
+};
+
+// ---------- Renderer / scene ----------
+const renderer = new THREE.WebGLRenderer({ antialias:false, preserveDrawingBuffer:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.LinearSRGBColorSpace; // we author palette values directly
+document.body.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(32, innerWidth/innerHeight, 0.1, 60);
+camera.position.set(-0.8, 1.3, 3.5);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0.0, 1.45, 0);
+controls.enableDamping = true;
+controls.minDistance = 1.2; controls.maxDistance = 12;
+
+// Light rig (fed to our toon shader as uniforms, not three.js lights)
+const shared = {
+  uKeyDir:     { value: new THREE.Vector3(-0.5, 0.75, 0.45).normalize() },
+  uCrystalPos: { value: new THREE.Vector3(0, 2, 0) },
+  uShadow:     { value: 0.3 },
+  uTime:       { value: 0 },
+  uFogNear:    { value: 4.0 },
+  uFogFar:     { value: 14.0 },
+};
+
+// ---------- Toon / posterize material (supports skinning) ----------
+const toonVert = /* glsl */`
+  #include <common>
+  #include <skinning_pars_vertex>
+  varying vec3 vWN; varying vec3 vWPos; varying vec2 vUv; varying float vViewZ;
+  void main(){
+    vUv = uv;
+    #include <beginnormal_vertex>
+    #include <skinbase_vertex>
+    #include <skinnormal_vertex>
+    #include <begin_vertex>
+    #include <skinning_vertex>
+    #include <project_vertex>
+    vWN = normalize(mat3(modelMatrix) * objectNormal);
+    vWPos = (modelMatrix * vec4(transformed,1.0)).xyz;
+    vViewZ = -mvPosition.z;
+  }`;
+
+const toonFrag = /* glsl */`
+  uniform sampler2D map; uniform float useMap; uniform float albedoMix; uniform float procGround;
+  uniform vec3 ramp0, ramp1, ramp2, ramp3;
+  uniform vec3 uKeyDir, uCrystalPos; uniform float uShadow, uTime, uFogNear, uFogFar, keyAmt, glowAmt;
+  varying vec3 vWN; varying vec3 vWPos; varying vec2 vUv; varying float vViewZ;
+
+  float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
+  float noise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
+    return mix(mix(hash(i),hash(i+vec2(1,0)),f.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x), f.y); }
+  float fbm(vec2 p){ float a=.5,s=0.; for(int i=0;i<5;i++){ s+=a*noise(p); p*=2.03; a*=.5;} return s; }
+
+  void main(){
+    vec3 N = normalize(vWN) * (gl_FrontFacing ? 1.0 : -1.0);
+    float alb = 0.75;
+    if (useMap > 0.5) { vec3 t = texture2D(map, vUv).rgb; alb = mix(0.75, dot(t, vec3(.3,.59,.11)) * 1.25, albedoMix); }
+    if (procGround > 0.5) {               // scratchy grass marks on the ground
+      float g = fbm(vWPos.xz * vec2(6.0, 2.2));
+      float streak = smoothstep(.55,.75, noise(vWPos.xz*vec2(40.,9.)));
+      alb = 0.85 - smoothstep(.45,.75,g)*0.55 - streak*0.25;
+    }
+    // key (moonlight) — wrapped lambert
+    float key = clamp(dot(N, normalize(uKeyDir))*0.6+0.4, 0., 1.) * keyAmt;
+    // crystal point light
+    vec3 L = uCrystalPos - vWPos; float d2 = dot(L,L);
+    float pl = max(dot(N, normalize(L)), 0.) * glowAmt / (1.0 + d2*1.6);
+    float tone = alb * (0.18 + max(key, 0.) + pl);
+    // fog into darkness (applied before quantization so it bands like printed ink)
+    tone *= 1.0 - smoothstep(uFogNear, uFogFar, vViewZ);
+    // wobble the band edges so terminators look hand-inked
+    tone += (fbm(vWPos.xy*5.0 + vWPos.z*3.0) - 0.5) * 0.07;
+    vec3 col = ramp0;
+    if (tone > uShadow)        col = ramp1;
+    if (tone > uShadow + 0.20) col = ramp2;
+    if (tone > uShadow + 0.48) col = ramp3;
+    gl_FragColor = vec4(col, 1.0);
+  }`;
+
+function toonMaterial(ramp, opts = {}) {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      ...shared,
+      map: { value: opts.map || null }, useMap: { value: opts.map ? 1 : 0 }, albedoMix: { value: opts.albedoMix ?? 0.6 },
+      procGround: { value: opts.ground ? 1 : 0 },
+      ramp0: { value: ramp[0] }, ramp1: { value: ramp[1] }, ramp2: { value: ramp[2] }, ramp3: { value: ramp[3] },
+      keyAmt: { value: opts.keyAmt ?? 0.55 }, glowAmt: { value: opts.glowAmt ?? 1.3 },
+    },
+    vertexShader: toonVert, fragmentShader: toonFrag, side: THREE.DoubleSide,
+  });
+}
+
+// ---------- Forest (procedural twisted trunks) ----------
+const forest = new THREE.Group(); scene.add(forest);
+const treeMat = toonMaterial(PAL.teal, { keyAmt: 0.75, glowAmt: 0.35 });
+const groundMat = toonMaterial(PAL.teal, { ground: true, keyAmt: 0.7, glowAmt: 0.9 });
+let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+
+function trunk(base, height, r0, twist) {
+  const pts = []; const n = 8;
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    pts.push(new THREE.Vector3(
+      base.x + Math.sin(t * 3 + twist) * 0.35 * t + (rnd()-.5)*0.12,
+      base.y + t * height,
+      base.z + Math.cos(t * 2.3 + twist) * 0.3 * t + (rnd()-.5)*0.12));
+  }
+  const curve = new THREE.CatmullRomCurve3(pts);
+  const seg = 40, rad = 10;
+  const g = new THREE.TubeGeometry(curve, seg, 1, rad, false);
+  const pos = g.attributes.position, v = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {        // taper + flare at the roots
+    const ring = Math.floor(i / (rad + 1)); const t = ring / seg;
+    const c = curve.getPointAt(t);
+    const r = r0 * (1.0 - 0.65 * t) * (1.0 + 1.6 * Math.pow(Math.max(0, 0.12 - t) / 0.12, 2));
+    v.fromBufferAttribute(pos, i).sub(c).multiplyScalar(r).add(c);
+    pos.setXYZ(i, v.x, v.y, v.z);
+  }
+  g.computeVertexNormals();
+  return { mesh: new THREE.Mesh(g, treeMat), curve };
+}
+function buildForest() {
+  const spots = [[-1.9,-1.2],[1.7,-1.6],[-0.9,-3.2],[2.6,-3.6],[-3.2,-2.6],[0.7,-4.8],[-2.2,-5.5],[3.8,-1.0],[-4.2,-0.3],[1.6,-6.5],[-0.4,-7.5],[4.6,-5.2],[-5,-4.2]];
+  for (const [x, z] of spots) {
+    const { mesh, curve } = trunk(new THREE.Vector3(x, 0, z), 5 + rnd() * 2, 0.16 + rnd() * 0.14, rnd() * 6);
+    forest.add(mesh);
+    for (let b = 0; b < 2; b++) {                 // a couple of crooked branches
+      const p = curve.getPointAt(0.45 + rnd() * 0.35);
+      const dir = new THREE.Vector3(rnd() - .5, 0.6, rnd() - .5).normalize();
+      const pts = [p.clone(), p.clone().addScaledVector(dir, 0.7).add(new THREE.Vector3((rnd()-.5)*.4, .2, 0)), p.clone().addScaledVector(dir, 1.5).add(new THREE.Vector3((rnd()-.5)*.6, .5, 0))];
+      const bg = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 12, 0.04 + rnd() * 0.03, 6, false);
+      forest.add(new THREE.Mesh(bg, treeMat));
+    }
+  }
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(40, 40, 1, 1).rotateX(-Math.PI / 2), groundMat);
+  forest.add(ground);
+  // a few rocks / roots in the foreground
+  for (let i = 0; i < 9; i++) {
+    const r = new THREE.Mesh(new THREE.DodecahedronGeometry(0.12 + rnd() * 0.2, 0), treeMat);
+    r.position.set((rnd() - .5) * 5, 0.02, -rnd() * 4 + 0.8); r.scale.y = 0.5; r.rotation.set(rnd(), rnd(), rnd());
+    forest.add(r);
+  }
+}
+buildForest();
+
+// ---------- Crystal + smoke ----------
+const crystalMat = new THREE.ShaderMaterial({
+  uniforms: { core: { value: PAL.glowCore }, edge: { value: PAL.glowEdge }, uTime: shared.uTime },
+  vertexShader: /* glsl */`
+    #include <common>
+    varying vec3 vVP; varying vec3 vObj;
+    void main(){ vObj = position; vec4 mv = modelViewMatrix*vec4(position,1.); vVP = mv.xyz; gl_Position = projectionMatrix*mv; }`,
+  fragmentShader: /* glsl */`
+    uniform vec3 core, edge; uniform float uTime; varying vec3 vVP; varying vec3 vObj;
+    void main(){
+      vec3 n = normalize(cross(dFdx(vVP), dFdy(vVP)));         // faceted normal
+      float facing = abs(dot(n, normalize(-vVP)));
+      float flick = 0.04*sin(uTime*7.0) + 0.03*sin(uTime*13.0);
+      float band = step(0.62 + flick, facing) + step(0.85, facing)*0.0;
+      // bright core strip down the middle of the crystal like the reference
+      float strip = step(abs(vObj.x) + abs(vObj.z)*0.5, 0.05) * step(-0.3, vObj.y);
+      vec3 c = mix(edge, core, clamp(band + strip, 0., 1.));
+      gl_FragColor = vec4(c, 1.);
+    }`,
+});
+const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.1, 0), crystalMat);
+crystal.scale.set(0.62, 1.9, 0.45);
+
+// Smoke: a thin ribbon whose vertices are displaced in the vertex shader (layer 1 = no outline pass)
+const SMOKE_LEN = 0.75;
+const smokeGeo = new THREE.PlaneGeometry(1, 1, 1, 80);
+const smokeMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: shared.uTime, col: { value: PAL.smoke }, ink: { value: PAL.ink } },
+  vertexShader: /* glsl */`
+    uniform float uTime; varying float vT; varying float vSide;
+    void main(){
+      float t = position.y + 0.5;           // 0..1 along the ribbon
+      vT = t; vSide = position.x;
+      vec3 p = vec3(0.0, t*${SMOKE_LEN.toFixed(2)}, 0.0);
+      p.x += sin(t*9.0 - uTime*1.6)*0.09*t + sin(t*19.0 - uTime*2.7)*0.03*t;
+      p.z += cos(t*5.0 - uTime*1.2)*0.05*t;
+      float w = mix(0.014, 0.004, t);
+      // billboard the width towards the camera
+      vec4 mv = modelViewMatrix * vec4(p, 1.0);
+      vec4 mv2 = modelViewMatrix * vec4(p + vec3(0.0, 0.01, 0.0), 1.0);
+      vec2 dir = normalize(mv2.xy - mv.xy);
+      mv.xy += vec2(-dir.y, dir.x) * position.x * w * 2.0;
+      gl_Position = projectionMatrix * mv;
+    }`,
+  fragmentShader: /* glsl */`
+    uniform vec3 col, ink; varying float vT; varying float vSide;
+    void main(){
+      if (vT > 0.97) discard;
+      float rim = smoothstep(0.32, 0.5, abs(vSide));         // inked contour on the ribbon
+      gl_FragColor = vec4(mix(col, ink, rim), 1.0);
+    }`,
+  side: THREE.DoubleSide,
+});
+const smoke = new THREE.Mesh(smokeGeo, smokeMat);
+smoke.layers.set(1); smoke.frustumCulled = false;
+scene.add(smoke);
+
+// ---------- Model loading ----------
+const loader = new GLTFLoader();
+let model = null, mixer = null, clips = [], action = null, staffTip = null, staffInfo = null;
+// Optional pose tweak: stand the staff upright in the hand, like the reference
+const UP = new THREE.Vector3(-0.2, 1, 0.12).normalize(), _q = new THREE.Quaternion(), _pq = new THREE.Quaternion(), _v = new THREE.Vector3();
+function uprightStaff() {
+  if (!staffInfo) return;
+  const { node, axis, q0 } = staffInfo;
+  node.quaternion.copy(q0);
+  if (!$('upright').checked) return;
+  node.parent.updateWorldMatrix(true, false);
+  node.parent.getWorldQuaternion(_pq);
+  const wq = _pq.clone().multiply(q0);
+  _v.copy(axis).applyQuaternion(wq);
+  _q.setFromUnitVectors(_v, UP).multiply(wq);
+  node.quaternion.copy(_pq.invert().multiply(_q));
+}
+
+function applyToon(root) {
+  root.traverse(o => {
+    if (!o.isMesh) return;
+    const src = Array.isArray(o.material) ? o.material[0] : o.material;
+    const isStaff = /staff|weapon|cylinder/i.test(o.name) || /staff/i.test(src?.name || '');
+    o.material = toonMaterial(isStaff ? PAL.staff : PAL.red, { map: src?.map || null, albedoMix: isStaff ? 0.3 : 0.55, keyAmt: 0.85, glowAmt: 1.4 });
+    o.frustumCulled = false;
+  });
+}
+
+function findStaff(root) {
+  let staff = null;
+  root.traverse(o => { if (o.isMesh && !o.isSkinnedMesh && /staff|weapon|cylinder/i.test(o.name)) staff = o; });
+  return staff;
+}
+
+function attachCrystal() {
+  if (crystal.parent) crystal.parent.remove(crystal);
+  staffTip = null; staffInfo = null;
+  const staff = findStaff(model);
+  if (!staff) { scene.add(crystal); crystal.position.set(0.35, 2.0, 0.2); return; }
+  // pick the end of the staff's longest local axis that is highest in world space
+  staff.geometry.computeBoundingBox();
+  const bb = staff.geometry.boundingBox, size = bb.getSize(new THREE.Vector3());
+  const ax = size.x > size.y ? (size.x > size.z ? 'x' : 'z') : (size.y > size.z ? 'y' : 'z');
+  const c = bb.getCenter(new THREE.Vector3());
+  const a = c.clone(), b = c.clone(); a[ax] = bb.min[ax]; b[ax] = bb.max[ax];
+  model.updateMatrixWorld(true);
+  const wa = staff.localToWorld(a.clone()), wb = staff.localToWorld(b.clone());
+  let top = wa.y > wb.y ? a : b, bottom = wa.y > wb.y ? b : a;
+  // the CC0 model is chibi-proportioned: lengthen the staff shaft so the crystal sits above the head
+  if (!staff.userData.stretched) {
+    staff.userData.stretched = true;
+    const dir = top.clone().sub(bottom).normalize(), len = top.distanceTo(bottom), p = staff.geometry.attributes.position, v = new THREE.Vector3();
+    for (let i = 0; i < p.count; i++) {
+      v.fromBufferAttribute(p, i);
+      const s = v.clone().sub(c).dot(dir);
+      v.addScaledVector(dir, s > 0 ? len * 0.38 : -len * 0.25);
+      p.setXYZ(i, v.x, v.y, v.z);
+    }
+    p.needsUpdate = true; staff.geometry.computeBoundingBox();
+    top.addScaledVector(dir, len * 0.38); bottom.addScaledVector(dir, -len * 0.25);
+  }
+  staffInfo = { node: staff, axis: top.clone().sub(bottom).normalize(), q0: staff.quaternion.clone() };
+  const holder = new THREE.Object3D();
+  holder.position.copy(top);
+  holder.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), top.clone().sub(bottom).normalize());
+  staff.add(holder);
+  // compensate for the staff's world scale so the crystal keeps a constant size
+  const ws = staff.getWorldScale(new THREE.Vector3());
+  holder.scale.set(1 / ws.x, 1 / ws.y, 1 / ws.z);
+  crystal.position.set(0, 0.14, 0);
+  holder.add(crystal);
+  staffTip = new THREE.Object3D(); staffTip.position.set(0, 0.24, 0); holder.add(staffTip);
+}
+
+function setModel(gltf) {
+  if (model) scene.remove(model);
+  model = gltf.scene; clips = gltf.animations || [];
+  // normalise height to ~1.85 units and stand on the ground
+  const box = new THREE.Box3().setFromObject(model);
+  const h = box.getSize(new THREE.Vector3()).y || 1;
+  model.scale.multiplyScalar(1.85 / h);
+  box.setFromObject(model);
+  model.position.y -= box.min.y;
+  model.position.x -= (box.min.x + box.max.x) / 2; model.position.z -= (box.min.z + box.max.z) / 2;
+  model.rotation.y = 0.25;
+  applyToon(model);
+  scene.add(model);
+  mixer = new THREE.AnimationMixer(model);
+  const sel = $('anim'); sel.innerHTML = '';
+  clips.forEach((c, i) => sel.add(new Option(c.name, i)));
+  const pref = clips.findIndex(c => /^idle$/i.test(c.name));
+  sel.value = pref >= 0 ? pref : 0;
+  playClip(+sel.value);
+  attachCrystal(); setFrame();
+  $('msg').style.display = 'none';
+}
+
+function playClip(i) {
+  if (!mixer || !clips[i]) return;
+  mixer.stopAllAction();
+  action = mixer.clipAction(clips[i]); action.play();
+  if (!$('play').checked) { action.paused = false; setFrame(); }
+}
+function setFrame() {
+  if (!action) return;
+  const t = +$('frame').value * action.getClip().duration;
+  action.time = t; mixer.update(0); uprightStaff(); $('frameVal').textContent = t.toFixed(2) + 's';
+}
+
+import('./wizard-model.js').then(m => Uint8Array.from(atob(m.default), c => c.charCodeAt(0)).buffer).then(buf => loader.parse(buf, '', setModel, e => { throw e; }))
+  .catch(e => { $('msg').textContent = 'Could not load model'; console.error(e); });
+
+// ---------- Render targets ----------
+const dpr = renderer.getPixelRatio();
+const W = () => Math.floor(innerWidth * dpr), H = () => Math.floor(innerHeight * dpr);
+const rtColor = new THREE.WebGLRenderTarget(W(), H(), { samples: 4 });
+const rtNormal = new THREE.WebGLRenderTarget(W(), H(), { depthTexture: new THREE.DepthTexture(W(), H()) });
+const normalMat = new THREE.MeshNormalMaterial({ side: THREE.DoubleSide });
+
+// ---------- Composite: ink outlines + line screen + paper ----------
+const post = new THREE.ShaderMaterial({
+  uniforms: {
+    tColor: { value: rtColor.texture }, tNormal: { value: rtNormal.texture }, tDepth: { value: rtNormal.depthTexture },
+    res: { value: new THREE.Vector2(W(), H()) }, dpr: { value: dpr },
+    near: { value: camera.near }, far: { value: camera.far },
+    uTime: shared.uTime, boilT: { value: 0 },
+    period: { value: 3.4 }, angle: { value: 62 }, screenAmt: { value: 0.55 }, edgeW: { value: 1.4 }, grain: { value: 0.5 },
+    useEdge: { value: 1 }, useScreen: { value: 1 }, usePaper: { value: 1 },
+    ink: { value: PAL.ink }, paper: { value: PAL.paper },
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }`,
+  fragmentShader: /* glsl */`
+    uniform sampler2D tColor, tNormal, tDepth; uniform vec2 res; uniform float dpr, near, far, uTime, boilT;
+    uniform float period, angle, screenAmt, edgeW, grain, useEdge, useScreen, usePaper;
+    uniform vec3 ink, paper;
+    varying vec2 vUv;
+
+    float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
+    float noise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
+      return mix(mix(hash(i),hash(i+vec2(1,0)),f.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x), f.y); }
+    float linZ(float d){ float z = d*2.-1.; return (2.*near*far)/(far+near - z*(far-near)); }
+
+    float edgeAt(vec2 uv, float w){
+      vec2 px = w*dpr/res;
+      vec3 n0 = texture2D(tNormal, uv).xyz;
+      float z0 = linZ(texture2D(tDepth, uv).x);
+      float e = 0.;
+      for (int i = 0; i < 4; i++){
+        vec2 o = i==0 ? vec2(px.x,0.) : i==1 ? vec2(-px.x,0.) : i==2 ? vec2(0.,px.y) : vec2(0.,-px.y);
+        vec3 n = texture2D(tNormal, uv+o).xyz; float z = linZ(texture2D(tDepth, uv+o).x);
+        e = max(e, smoothstep(0.18, 0.4, length(n-n0)));
+        e = max(e, smoothstep(0.04, 0.09, abs(z-z0)/z0));
+      }
+      return e;
+    }
+
+    void main(){
+      vec2 frag = vUv * res;
+      // "boil": hand-drawn jitter that re-rolls a few times a second
+      vec2 jit = (vec2(noise(frag/(28.*dpr) + boilT*7.1), noise(frag/(28.*dpr) - boilT*3.7)) - 0.5) * 1.6 * dpr / res;
+      vec3 col = texture2D(tColor, vUv + jit*0.6).rgb;
+
+      // ink outlines from depth + normal discontinuities, width modulated like a brush
+      if (useEdge > 0.5) {
+        float w = edgeW * (0.75 + 0.6*noise(frag/(60.*dpr) + boilT));
+        float e = edgeAt(vUv + jit, w);
+        col = mix(col, ink, e);
+      }
+
+      // engraving-style line screen: thicker lines where the tone is darker
+      if (useScreen > 0.5) {
+        float lum = dot(col, vec3(.3,.59,.11));
+        float a = radians(angle);
+        vec2 dir = vec2(cos(a), sin(a));
+        float wob = (noise(frag/(90.*dpr)) - 0.5) * 1.2 + (noise(frag/(9.*dpr))-.5)*0.25;
+        float c1 = dot(frag/dpr, dir)/period + wob;
+        float f1 = abs(fract(c1) - 0.5) * 2.0;                       // 0 at line centre
+        float thick = mix(0.22, 0.75, 1.0 - smoothstep(0.03, 0.55, lum));
+        float line1 = 1.0 - smoothstep(thick - 0.18, thick + 0.18, f1);
+        // faint cross-thread for the woven / pulp-paper look
+        vec2 dir2 = vec2(-dir.y, dir.x);
+        float f2 = abs(fract(dot(frag/dpr, dir2)/(period*1.9) + wob*0.5) - 0.5) * 2.0;
+        float line2 = 1.0 - smoothstep(0.15, 0.35, f2);
+        vec3 dark = col * 0.58;
+        vec3 lite = min(col * 1.18 + 0.02, 1.0);
+        col = mix(col, lite, (1.0-line1) * 0.35 * screenAmt);
+        col = mix(col, dark, line1 * screenAmt);
+        col = mix(col, dark, line2 * 0.25 * screenAmt);
+      }
+
+      // aged paper: warm multiply, faded blacks, grain, blotches, vignette
+      if (usePaper > 0.5) {
+        float g = hash(floor(frag/ (1.5*dpr)) + floor(uTime*12.0)) - 0.5;
+        float blot = noise(frag/(220.*dpr)) - 0.5;
+        col = mix(col, col * paper * 1.06, 0.6);
+        col = max(col, vec3(0.075, 0.055, 0.05));                    // printed blacks are never black
+        col += (g * 0.07 + blot * 0.06) * grain;
+        vec2 q = vUv - 0.5; col *= 1.0 - dot(q, q) * 0.9;
+      }
+      gl_FragColor = vec4(col, 1.0);
+    }`,
+  depthTest: false, depthWrite: false,
+});
+const quadScene = new THREE.Scene();
+const quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+quadScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), post));
+
+// ---------- UI ----------
+$('uiToggle').onclick = () => $('ui').classList.toggle('hidden');
+if (innerWidth < 600) $('ui').classList.add('hidden');
+$('anim').onchange = e => playClip(+e.target.value);
+$('upright').onchange = () => { uprightStaff(); };
+$('frame').oninput = () => { $('play').checked = false; if (action) action.paused = false; setFrame(); };
+const bind = (id, uni, f = Number) => $(id).oninput = e => (uni.value = f(e.target.value));
+bind('period', post.uniforms.period); bind('angle', post.uniforms.angle); bind('screen', post.uniforms.screenAmt);
+bind('edgeW', post.uniforms.edgeW); bind('grain', post.uniforms.grain); bind('shadow', shared.uShadow);
+const tog = (id, uni) => $(id).onchange = e => (uni.value = e.target.checked ? 1 : 0);
+tog('pEdge', post.uniforms.useEdge); tog('pScreen', post.uniforms.useScreen); tog('pPaper', post.uniforms.usePaper);
+$('pTrees').onchange = e => (forest.children.forEach(m => { if (m.geometry.type !== 'PlaneGeometry') m.visible = e.target.checked; }));
+
+function loadFile(file) {
+  if (!file) return;
+  $('msg').style.display = 'flex'; $('msg').textContent = 'INKING…';
+  file.arrayBuffer().then(buf => loader.parse(buf, '', setModel, err => { $('msg').textContent = 'Could not parse file'; console.error(err); }));
+}
+$('file').onchange = e => loadFile(e.target.files[0]);
+addEventListener('dragover', e => e.preventDefault());
+addEventListener('drop', e => { e.preventDefault(); loadFile(e.dataTransfer.files[0]); });
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  rtColor.setSize(W(), H()); rtNormal.setSize(W(), H());
+  post.uniforms.res.value.set(W(), H());
+});
+
+// ---------- Loop ----------
+const clock = new THREE.Clock();
+const tmp = new THREE.Vector3();
+renderer.setAnimationLoop(() => {
+  const dt = clock.getDelta();
+  shared.uTime.value += dt;
+  if ($('boil').checked) post.uniforms.boilT.value = Math.floor(shared.uTime.value * 6) * 0.37; // 6 fps boil
+  if (mixer && $('play').checked) {
+    mixer.update(dt); uprightStaff();
+    if (action) { const d = action.getClip().duration; $('frame').value = (action.time % d) / d; $('frameVal').textContent = action.time.toFixed(2) + 's'; }
+  }
+  controls.update();
+  scene.updateMatrixWorld(true);
+  crystal.getWorldPosition(shared.uCrystalPos.value);
+  if (staffTip) { staffTip.getWorldPosition(tmp); smoke.position.copy(tmp); }
+  else smoke.position.copy(shared.uCrystalPos.value).add(new THREE.Vector3(0, 0.25, 0));
+
+  // pass 1: posterized colour (all layers)
+  camera.layers.enableAll();
+  renderer.setClearColor(0x120d0c, 1);
+  renderer.setRenderTarget(rtColor); renderer.clear(); renderer.render(scene, camera);
+  // pass 2: normals + depth for ink lines (layer 0 only — no smoke)
+  camera.layers.set(0);
+  scene.overrideMaterial = normalMat;
+  renderer.setClearColor(0x000000, 1);
+  renderer.setRenderTarget(rtNormal); renderer.clear(); renderer.render(scene, camera);
+  scene.overrideMaterial = null;
+  // pass 3: composite
+  renderer.setRenderTarget(null); renderer.render(quadScene, quadCam);
+});
+</script>
+</body>
+</html>

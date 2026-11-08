@@ -1,0 +1,8 @@
+node_modules/
+dist/
+dev-dist/
+test-results/
+playwright-report/
+.DS_Store
+*.log
+assets/source/**/*.zip

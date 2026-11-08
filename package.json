@@ -1,0 +1,33 @@
+{
+  "name": "inkwake",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "test": "vitest run",
+    "e2e": "playwright test",
+    "assets": "bun scripts/fetch-assets.ts && bun scripts/optimize.ts && bun scripts/validate.ts",
+    "assets:validate": "bun scripts/validate.ts"
+  },
+  "dependencies": {
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.6",
+    "@playwright/test": "^1.65.0",
+    "@types/bun": "^1.4.4",
+    "@types/node": "^26.6.6",
+    "@types/three": "^0.187.0",
+    "lil-gui": "^0.21.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.6",
+    "vite-plugin-pwa": "^2.0.0",
+    "vitest": "^5.1.0"
+  }
+}
