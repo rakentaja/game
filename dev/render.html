@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#16100e" />
+  <title>INKWAKE — render harness</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #120d0c; overflow: hidden; color: #efe1c9;
+      font: 12px/1.3 ui-monospace, Menlo, Consolas, monospace; -webkit-user-select: none; user-select: none; }
+    #gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+    #hud { position: fixed; left: 8px; top: calc(8px + env(safe-area-inset-top)); pointer-events: none;
+      background: rgba(22,16,14,.72); padding: 6px 8px; border-left: 3px solid #e2794e; white-space: pre; }
+    #bar { position: fixed; left: 0; right: 0; bottom: 0; display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;
+      padding: 8px 8px calc(8px + env(safe-area-inset-bottom)); background: linear-gradient(transparent, rgba(18,13,12,.85)); }
+    #bar button { font: 700 12px/1 ui-monospace, Menlo, monospace; letter-spacing: .06em; text-transform: uppercase;
+      color: #16100e; background: #efe1c9; border: 2px solid #16100e; box-shadow: 3px 3px 0 #16100e; padding: 8px 10px;
+      border-radius: 2px; }
+    #bar button:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 #16100e; }
+    #bar button.on { background: #f6c35a; }
+    body.shot #hud, body.shot #bar { display: none; }
+  </style>
+</head>
+<body>
+  <canvas id="gl"></canvas>
+  <div id="hud">inking…</div>
+  <div id="bar"></div>
+  <script type="module" src="/src/dev/render.ts"></script>
+</body>
+</html>
