@@ -258,7 +258,16 @@ export const TUNING = {
     railBlendBack: 0.6,
   },
   haptics: { tap: 8, dash: 18, crystal: 6, hurt: 45, crit: 30, fizzle: 4 },
-  panelCut: { duration: 0.6, panels: 3 },
+  panelCut: {
+    duration: 0.6,
+    panels: 3,
+    closeUpFar: 9,
+    /** Drop to 2 panels when 3 would blow these (PLAN §8 budgets, with margin). */
+    maxDraws: 115,
+    maxTris: 330000,
+    /** snapshot() during a cut shoots the composition as it looks this far in (all panels landed). */
+    snapshotAt: 0.34,
+  },
   pageTurn: { duration: 0.9 },
   difficulty: {
     story: { damageTaken: 0.5, energyCost: 0.6 },
