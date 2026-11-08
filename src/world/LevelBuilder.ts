@@ -896,8 +896,8 @@ function rootGeometry(base: THREE.Vector3, r: number, rnd: Rng, frac: number): T
 
 function rockGeometry(rnd: Rng): THREE.BufferGeometry {
   const g = new THREE.IcosahedronGeometry(1, 0);
-  const ng = g.toNonIndexed();
-  g.dispose();
+  const ng = g.index ? g.toNonIndexed() : g;
+  if (ng !== g) g.dispose();
   const p = ng.attributes.position as THREE.BufferAttribute;
   const offs = new Map<string, number>();
   for (let i = 0; i < p.count; i++) {

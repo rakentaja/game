@@ -64,15 +64,16 @@ export class ScreenShake {
 
 /** Real-time hold that drives `time.scale` to 0 and restores the previous value afterwards. */
 export class TimeFreeze {
+  /** Freezes overlap (panel cut + hit-stop); time resumes only when the last one releases. */
+  private static holders = 0;
   remaining = 0;
-  private saved = 1;
   private frozen = false;
 
   hold(seconds: number, time: { scale: number }): void {
     if (seconds <= 0) return;
     if (!this.frozen) {
-      this.saved = time.scale;
       this.frozen = true;
+      TimeFreeze.holders++;
       time.scale = 0;
     }
     this.remaining = Math.max(this.remaining, seconds);
@@ -84,7 +85,8 @@ export class TimeFreeze {
     if (this.remaining <= 0) {
       this.frozen = false;
       this.remaining = 0;
-      time.scale = this.saved;
+      TimeFreeze.holders = Math.max(0, TimeFreeze.holders - 1);
+      if (TimeFreeze.holders === 0) time.scale = 1;
     }
   }
 

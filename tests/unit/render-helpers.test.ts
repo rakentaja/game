@@ -76,8 +76,8 @@ describe('shake / freeze', () => {
     expect(s.trauma).toBe(0);
   });
 
-  it('time freeze holds scale at 0 and restores the previous value', () => {
-    const time = { scale: 0.5 };
+  it('time freeze holds scale at 0 and resumes normal time', () => {
+    const time = { scale: 1 };
     const f = new TimeFreeze();
     f.hold(0.1, time);
     expect(time.scale).toBe(0);
@@ -85,7 +85,7 @@ describe('shake / freeze', () => {
     f.update(0.06, time);
     expect(time.scale).toBe(0);
     f.update(0.05, time);
-    expect(time.scale).toBe(0.5);
+    expect(time.scale).toBe(1);
     expect(f.active).toBe(false);
   });
 });
@@ -122,5 +122,24 @@ describe('onomatopoeia', () => {
     expect(wordFor({ t: (k) => (k === 'fx.krak' ? 'ÇATIRT!' : k) }, 'krak')).toBe('ÇATIRT!');
     expect(wordFor(null, 'fwoosh')).toBe('FWOOSH!');
     expect(wordFor(null, 'bonk')).toBe('BONK!');
+  });
+});
+
+describe('TimeFreeze overlap', () => {
+  it('resumes time when overlapping freezes release in any order', () => {
+    const time = { scale: 1 };
+    const a = new TimeFreeze();
+    const b = new TimeFreeze();
+    a.hold(0.6, time);
+    b.hold(0.1, time);
+    a.update(0.7, time);
+    expect(time.scale).toBe(0);
+    b.update(0.2, time);
+    expect(time.scale).toBe(1);
+    b.hold(0.1, time);
+    a.hold(0.6, time);
+    b.update(0.2, time);
+    a.update(0.7, time);
+    expect(time.scale).toBe(1);
   });
 });
