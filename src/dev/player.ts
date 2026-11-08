@@ -334,8 +334,8 @@ function updateHud(dt: number) {
 }
 
 // ───────── wizard ─────────
-loadWizard('/assets/wizard.glb', async () => {
-  const txt = await (await fetch('/reference/poc/wizard-model.js')).text();
+loadWizard(undefined, async () => {
+  const txt = await (await fetch(`${import.meta.env.BASE_URL}reference/poc/wizard-model.js`)).text();
   const b64 = txt.slice(txt.indexOf('"', txt.indexOf('export default')) + 1, txt.lastIndexOf('"'));
   return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)).buffer;
 })

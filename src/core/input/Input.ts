@@ -28,6 +28,13 @@ export type GestureDebug = (
 ) => void;
 
 const MAX_ACTION = 4;
+/**
+ * Pointer targets that belong to the UI, not to the game. Everything else under the input element
+ * (HUD decorations, toasts, the canvas) counts as play area, so a stray full-screen overlay can
+ * never swallow the joystick.
+ */
+const UI_TARGETS =
+  'button, a, input, select, textarea, label, summary, [role="button"], [role="slider"], [data-no-gesture], dialog';
 const PAD_DEAD = 0.18;
 
 interface ActionSlot {
@@ -209,8 +216,14 @@ export class Input implements InputAPI {
   };
 
   private prevent = (e: Event): void => {
+    if (this.isUiTarget(e.target)) return; // keep clicks on real controls working
     if (e.cancelable) e.preventDefault();
   };
+
+  private isUiTarget(t: EventTarget | null): boolean {
+    if (!t || t === this.el || !(t instanceof Element)) return false;
+    return t.closest(UI_TARGETS) !== null;
+  }
 
   private isMoveSide(x: number): boolean {
     const left = x - this.rect.left < this.rect.width * 0.5;
@@ -218,7 +231,7 @@ export class Input implements InputAPI {
   }
 
   private onDown = (e: PointerEvent): void => {
-    if (!this.enabled) return;
+    if (!this.enabled || this.isUiTarget(e.target)) return;
     if (e.cancelable) e.preventDefault();
     const x = e.clientX - this.rect.left;
     const y = e.clientY - this.rect.top;

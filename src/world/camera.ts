@@ -70,6 +70,9 @@ export class CameraRig {
   /** 0..1 trauma; shake amplitude is trauma². */
   trauma = 0;
   railActive = false;
+  /** Boom length multiplier target (boss fights pull back); eased internally. */
+  zoom = 1;
+  private zoomS = { x: 1, v: 0 };
 
   private sx = { x: 0, v: 0 };
   private sy = { x: 0, v: 0 };
@@ -209,6 +212,8 @@ export class CameraRig {
     // vertical constraint: ground depth projects to depth·sin(pitch) of view-plane height
     const tanV = Math.tan(THREE.MathUtils.degToRad(fovBase) / 2);
     dist = Math.min(C.maxDistance, Math.max(dist, (C.minGroundDepth * Math.sin(pitch)) / (2 * tanV)));
+    springStep(this.zoomS, this.zoom, 2.5, dt);
+    dist *= this.zoomS.x;
     const bias = portrait ? C.forwardBiasPortrait : C.forwardBiasLandscape;
 
     this.updateBasis();
