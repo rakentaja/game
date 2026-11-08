@@ -30,12 +30,12 @@ import { InkCover, InkParticles, Shape, Telegraphs, WeakPointView } from './fx';
 import { createEditorUniforms, type EditorUniforms, PART } from './materials';
 import { EditorRig } from './rig';
 
-/** Onomatopoeia keys for `fx:panelCut` (ui i18n should provide them; fall back to the key). */
+/** Onomatopoeia keys for `fx:panelCut` — matches the UI's `onomatopoeia.*` i18n set. */
 export const EDITOR_WORDS = {
-  intro: 'grah',
-  phase1: 'skrrt',
-  phase2: 'scritch',
-  phase3: 'fwip',
+  intro: 'roar',
+  phase1: 'scrub',
+  phase2: 'skritch',
+  phase3: 'fwoosh',
   final: 'krak',
 } as const;
 

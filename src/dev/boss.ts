@@ -103,10 +103,10 @@ render.resize();
 
 // ───────────── fx stand-ins: panel cut, shake, hitstop ─────────────
 const WORDS: Record<string, string> = {
-  grah: 'GRAAAH!',
-  skrrt: 'SKRRRT!',
-  scritch: 'SCRITCH!',
-  fwip: 'FWIP!',
+  roar: 'GRAAAH!',
+  scrub: 'SKRRRUB!',
+  skritch: 'SKRITCH!',
+  fwoosh: 'FWOOSH!',
   krak: 'KRAK!',
 };
 let freeze = 0;
