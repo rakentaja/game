@@ -246,6 +246,21 @@ export const TUNING = {
     inkPerDestroy: 16,
     /** Editor body blocker radius (levels' boss arena should add the same circle). */
     bodyRadius: 1.7,
+    /** Ink economy guard: leak `perImpact` at impacts while energy < leakBelow; emergency drops. */
+    ink: { leakBelow: 45, perImpact: 8, emergencyBelow: 18, emergencyEvery: 3.5, emergencyAmount: 14 },
+    /** Boss camera (Editor.applyCamera): behind the player on the Editor→player axis. */
+    camera: {
+      backPortrait: 9.5,
+      upPortrait: 7.0,
+      backLandscape: 11.5,
+      upLandscape: 7.4,
+      look: 0.55,
+      lookIntro: 0.75,
+      southBias: 0.55,
+      nearDist: 10,
+      nearBack: 3,
+      nearUp: 1.6,
+    },
   },
   camera: {
     distance: 9,

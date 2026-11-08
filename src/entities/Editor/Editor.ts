@@ -44,6 +44,11 @@ const WP_ID_BASE = 9000;
 
 const _v = new THREE.Vector3();
 const _p: [number, number, number] = [0, 0, 0];
+const _camPos = new THREE.Vector3();
+const _camLook = new THREE.Vector3();
+const _camRig = new THREE.Vector3();
+const _camQ = new THREE.Quaternion();
+const _camQ2 = new THREE.Quaternion();
 
 class WeakPointTarget implements Damageable {
   readonly id: number;
@@ -73,9 +78,14 @@ export interface EditorOptions {
   /** Parent for all Editor objects (default ctx.render.scene). */
   parent?: THREE.Object3D;
   seed?: number;
-  /** Try to load GLB replacements from the asset manifest (default true). */
+  /** Swap in the `editor` / `eraser` GLBs from the asset manifest (default false — see DECISIONS). */
   loadAssets?: boolean;
-  manifestUrl?: string;
+  /**
+   * Spawn a collectable ink pickup (the game wires InkPickups.spawn). The Editor leaks ink at its
+   * impact points when the player runs low so printing / bolts can never be starved. Without it
+   * the ink goes straight into `player.addEnergy`.
+   */
+  dropInk?: (x: number, z: number, amount: number) => void;
 }
 
 export class Editor implements EditorSink {
@@ -90,6 +100,11 @@ export class Editor implements EditorSink {
   /** Camera framing hint (world) + weight 0..1. */
   readonly focus = new THREE.Vector3();
   cameraWeight = 0;
+  private camBlend = 0;
+  private dropInkFn: ((x: number, z: number, amount: number) => void) | null = null;
+  private inkT = 0;
+  /** Player is dead / reprinting: the Editor holds its attacks. */
+  playerDown = false;
   /** True when the P3 core sits inside the crystal light (Blank Page). */
   coreLit = false;
   private group = new THREE.Group();
@@ -129,14 +144,24 @@ export class Editor implements EditorSink {
     }
     this.placeRig();
     this.parent.add(this.group);
+    this.dropInkFn = opts.dropInk ?? null;
     this.offs.push(
       ctx.events.on('settings:changed', (e) => {
         if (e.key === 'difficulty') this.fsm.difficulty = ctx.settings.difficulty;
       }),
+      // dying mid-fight: the player reprints at boss_start and the Editor restarts the current
+      // phase (earlier phases stay beaten) — never a dead end, never a full rerun
+      ctx.events.on('player:died', () => {
+        this.playerDown = true;
+      }),
+      ctx.events.on('player:respawn', () => {
+        this.playerDown = false;
+        if (this.fsm.state === 'phase' || this.fsm.state === 'transition') this.jumpTo(this.fsm.phase);
+      }),
     );
     this.fsm.reset();
     this.syncWeakpoints(0);
-    if (opts.loadAssets !== false) void this.loadAssets(opts.manifestUrl);
+    if (opts.loadAssets) void this.loadAssets();
   }
 
   private placeRig(): void {
@@ -210,8 +235,9 @@ export class Editor implements EditorSink {
     inp.playerRadius = ctx.tuning.player.radius;
     inp.revealRadius = ctx.reveal.radius;
 
-    f.step(dt);
+    f.step(this.playerDown && f.state === 'phase' ? 0 : dt);
     this.rig.update(f, dt, inp.px, inp.pz);
+    this.inkGuard(dt);
     this.syncWeakpoints(dt);
     this.telegraphs.update(f, dt);
     this.stepFx(dt);
@@ -234,6 +260,49 @@ export class Editor implements EditorSink {
     this.cameraWeight += (want - this.cameraWeight) * (1 - Math.exp(-2 * dt));
   }
 
+  /**
+   * Boss camera. Call right after the follow-camera rig updated `cam` each rendered frame: blends
+   * the rig's steep gameplay view into a lower, wider shot that keeps both the player and the
+   * whole 7 m Editor on screen (the rig's own shake survives as an offset).
+   */
+  applyCamera(cam: THREE.PerspectiveCamera, frameDt: number): void {
+    const f = this.fsm;
+    const pl = this.ctx.player;
+    const want = pl && f.state !== 'dormant' && !(f.state === 'dead' && f.t > 1.5) ? 1 : 0;
+    this.camBlend += (want - this.camBlend) * (1 - Math.exp(-1.6 * Math.min(frameDt, 0.05)));
+    if (this.camBlend < 0.002 || !pl) return;
+    const C = this.ctx.tuning.boss.camera;
+    const land = cam.aspect >= 1;
+    const p = pl.object.position;
+    const [bx, bz] = this.ctx.tuning.boss.pos;
+    // stand behind the player, looking at the Editor (bias toward the arena's south axis)
+    let dx = p.x - bx;
+    let dz = p.z - bz;
+    const dl = Math.hypot(dx, dz) || 1;
+    dx = (dx / dl) * (1 - C.southBias);
+    dz = (dz / dl) * (1 - C.southBias) + C.southBias;
+    const nl = Math.hypot(dx, dz) || 1;
+    dx /= nl;
+    dz /= nl;
+    // close to the Editor: pull back and up so its head stays clear of the HUD
+    const near = Math.min(1, Math.max(0, (C.nearDist - dl) / 6));
+    const back = (land ? C.backLandscape : C.backPortrait) + near * C.nearBack;
+    const up = (land ? C.upLandscape : C.upPortrait) + near * C.nearUp;
+    _camPos.set(p.x + dx * back, up, p.z + dz * back);
+    const lookW = f.state === 'intro' || f.state === 'dying' ? C.lookIntro : C.look;
+    _camLook.set(p.x, 1, p.z).lerp(this.rig.focus, lookW);
+    // keep the rig's shake: offset of the rig camera from its own unshaken pose is unknown, so
+    // carry a fraction of its frame-to-frame jitter by blending positions rather than replacing
+    const w = this.camBlend * this.camBlend * (3 - 2 * this.camBlend);
+    _camRig.copy(cam.position);
+    _camQ.copy(cam.quaternion);
+    cam.position.copy(_camPos);
+    cam.lookAt(_camLook);
+    _camQ2.copy(cam.quaternion);
+    cam.position.lerpVectors(_camRig, _camPos, w);
+    cam.quaternion.slerpQuaternions(_camQ, _camQ2, w);
+  }
+
   /** Once per rendered frame: line boil, resolution (visual-only, not simulation). */
   frame(frameDt: number): void {
     this.boilAcc += frameDt;
@@ -254,6 +323,30 @@ export class Editor implements EditorSink {
         Math.min(1, Math.max(0, _v.y * 0.5 + 0.5)),
       );
     }
+  }
+
+  /** Never let the fight starve the player of ink (printing needs ~24, bolts 5 each). */
+  private inkGuard(dt: number): void {
+    const f = this.fsm;
+    const pl = this.ctx.player;
+    const g = this.ctx.tuning.boss.ink;
+    if (!pl || f.state !== 'phase' || this.playerDown) return;
+    this.inkT -= dt;
+    if (this.inkT > 0 || pl.energy >= g.emergencyBelow) return;
+    this.inkT = g.emergencyEvery;
+    // drop it between the player and the Editor, a few steps away (a little errand, not a gift)
+    const [bx, bz] = this.ctx.tuning.boss.pos;
+    const dx = bx - pl.position.x;
+    const dz = bz - pl.position.z;
+    const l = Math.hypot(dx, dz) || 1;
+    const k = Math.min(3, l * 0.4);
+    this.leakInk(pl.position.x + (dx / l) * k, pl.position.z + (dz / l) * k, g.emergencyAmount);
+  }
+
+  private leakInk(x: number, z: number, amount: number): void {
+    if (this.dropInkFn) this.dropInkFn(x, z, amount);
+    else this.ctx.player?.addEnergy(amount);
+    this.particles.burst(x, 0.3, z, 10, 2, 3, Shape.Blob, 0.2, this.particles.colors.ink, 0.8, 10);
   }
 
   private syncWeakpoints(dt: number): void {
@@ -412,6 +505,10 @@ export class Editor implements EditorSink {
 
   onPhase(phase: BossPhase): void {
     this.ctx.events.emit('boss:phase', { phase });
+    this.ctx.events.emit('boss:health', { value: this.fsm.health });
+    // Redraw: the Editor redraws its page too — erased lanes heal (they'd otherwise hide ghosts
+    // from the crystal for the rest of the fight)
+    if (phase === 2) this.ctx.reveal.reset();
     if (this.fsm.t > 0.01 && phase === 1) return; // intro already cut + roared
     const word = phase === 1 ? EDITOR_WORDS.phase1 : phase === 2 ? EDITOR_WORDS.phase2 : EDITOR_WORDS.phase3;
     this.ctx.events.emit('fx:panelCut', { word, focus: this.focusTuple(), reason: `boss:phase${phase}` });
@@ -453,7 +550,13 @@ export class Editor implements EditorSink {
           rate: 0.6,
         });
       }
+      const pl = this.ctx.player;
+      const g = this.ctx.tuning.boss.ink;
+      if (pl && pl.energy < g.leakBelow && a.kind !== 'drag') this.leakInk(a.ax, a.az, g.perImpact);
     } else if (stage === 'end' && a.kind === 'drag') {
+      const pl = this.ctx.player;
+      const g = this.ctx.tuning.boss.ink;
+      if (pl && pl.energy < g.leakBelow) this.leakInk(a.bx, a.bz, g.perImpact);
       this.stopSweepLoop();
     } else if (stage === 'telegraph' && a.kind === 'drag') {
       this.ctx.audio.play('scribble_fire', { position: at, volume: 0.5, rate: 0.5 });
@@ -479,6 +582,7 @@ export class Editor implements EditorSink {
     const P = this.particles;
     const C = P.colors;
     const b = this.ctx.tuning.boss;
+    this.ctx.events.emit('boss:health', { value: this.fsm.health });
     this.hurt = destroyed ? 1 : 0.7;
     this.rig.hurtKick = destroyed ? 1 : 0.6;
     P.burst(w.x, w.y, w.z, destroyed ? 34 : 16, destroyed ? 7 : 4.5, 5, Shape.Blob, 0.28, C.ink, 1.1, 12);
@@ -566,41 +670,24 @@ export class Editor implements EditorSink {
   }
 
   /**
-   * Asset hook: if the manifest lists `editor` / `eraser` GLBs (assets workstream), swap them in.
-   * Tolerates `[{id,url}]`, `{assets:[{id,url}]}` and `{id:{url}}` shapes; silently keeps the
-   * procedural figure when nothing is there.
+   * Asset hook: if the manifest (`{version, assets:{id:{file}}}`, via the project AssetLoader so
+   * meshopt + the deploy base path work) lists `editor` / `eraser`, swap them in. Missing ids or a
+   * failed load silently keep the procedural figure. Returns true if a body model was applied.
    */
-  async loadAssets(manifestUrl = '/assets/manifest.json'): Promise<void> {
+  async loadAssets(): Promise<boolean> {
     try {
-      const res = await fetch(manifestUrl);
-      if (!res.ok) return;
-      const json: unknown = await res.json();
-      const url = (id: string): string | null => {
-        const list = Array.isArray(json)
-          ? json
-          : json && typeof json === 'object' && Array.isArray((json as { assets?: unknown }).assets)
-            ? (json as { assets: unknown[] }).assets
-            : null;
-        if (list) {
-          for (const e of list as { id?: string; url?: string; path?: string; file?: string }[])
-            if (e?.id === id) return e.url ?? e.path ?? e.file ?? null;
-          return null;
-        }
-        const e = (json as Record<string, { url?: string; path?: string; file?: string } | string>)[id];
-        if (!e) return null;
-        return typeof e === 'string' ? e : (e.url ?? e.path ?? e.file ?? null);
-      };
-      const editorUrl = url('editor');
-      const eraserUrl = url('eraser');
-      if (!editorUrl && !eraserUrl) return;
-      const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
-      const loader = new GLTFLoader();
-      const base = manifestUrl.replace(/[^/]*$/, '');
-      const abs = (u: string) => (/^(\/|https?:)/.test(u) ? u : base + u);
-      if (editorUrl) this.rig.useModel((await loader.loadAsync(abs(editorUrl))).scene);
-      if (eraserUrl) this.rig.usePencilModel((await loader.loadAsync(abs(eraserUrl))).scene);
+      const { assets } = await import('../../world/assets');
+      const loader = assets();
+      await loader.loadManifest();
+      let applied = false;
+      if (loader.has('editor')) {
+        this.rig.useModel((await loader.loadAsset('editor')).scene);
+        applied = true;
+      }
+      if (loader.has('eraser')) this.rig.usePencilModel((await loader.loadAsset('eraser')).scene);
+      return applied;
     } catch {
-      // keep procedural
+      return false;
     }
   }
 
