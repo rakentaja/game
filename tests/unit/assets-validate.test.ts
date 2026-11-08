@@ -1,4 +1,4 @@
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -8,7 +8,9 @@ const ROOT = join(import.meta.dirname, '../..');
 
 function sandbox() {
   const dir = mkdtempSync(join(tmpdir(), 'inkwake-assets-'));
-  cpSync(join(ROOT, 'public/assets'), join(dir, 'public/assets'), { recursive: true });
+  for (const d of ['assets', 'fonts', 'audio'])
+    if (existsSync(join(ROOT, 'public', d)))
+      cpSync(join(ROOT, 'public', d), join(dir, 'public', d), { recursive: true });
   cpSync(join(ROOT, 'assets/licenses.json'), join(dir, 'licenses.json'));
   return { dir, opts: { publicDir: join(dir, 'public'), licensesPath: join(dir, 'licenses.json') } };
 }
