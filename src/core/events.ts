@@ -29,6 +29,12 @@ export interface GameEvents {
   'boss:phase': { phase: 1 | 2 | 3 };
   'boss:weakpoint': { index: number; destroyed: boolean };
   'boss:defeated': Record<string, never>;
+  /** Ask the enemy spawner for a spawn (boss erased lanes / scribbles). Spawner enforces maxActive. */
+  'spawn:request': { kind: EnemyKind; x: number; z: number; source: string };
+  /** Boss attack lifecycle, for UI/audio/camera (telegraph → strike → end). */
+  'boss:attack': { kind: 'drag' | 'press' | 'stab'; stage: 'telegraph' | 'strike' | 'end' };
+  /** Death cinematic progress: 'inked' (flood), 'torn' (shreds), 'black' (page full ink, cover can show). */
+  'boss:death': { stage: 'inked' | 'torn' | 'black' };
   /** Request a comic-panel freeze cut. `word` is an onomatopoeia key in i18n (e.g. 'krak'). */
   'fx:panelCut': { word: string; focus: [number, number, number]; reason: string };
   'fx:shake': { intensity: number; duration: number };
