@@ -12,7 +12,7 @@ import {
   type TargetRegistry,
 } from '../../src/core/types';
 import { TUNING } from '../../src/data/tuning';
-import { AutoplayBot } from '../../src/debug/autoplay';
+import { AutoplayBot, type BossView } from '../../src/debug/autoplay';
 import { Player } from '../../src/entities/Player';
 import { Combat } from '../../src/systems/combat';
 import { InkEnergy, InkPickups } from '../../src/systems/ink-energy';
@@ -344,6 +344,19 @@ describe('Player controller', () => {
     expect(r.player.pages).toBe(TUNING.player.maxPages);
   });
 
+  it('never freezes when standing just outside the walkable area', () => {
+    const fenced: CollisionAPI = { ...openWorld, walkable: (x) => x < 5 };
+    const r = rig({ world: fenced });
+    r.player.teleport(5.3, 0, 0, 0);
+    r.input.state.move.set(-1, 0);
+    r.run(0.5);
+    expect(r.player.position.x).toBeLessThan(4.5);
+    // and from inside, the fence still holds
+    r.input.state.move.set(1, 0);
+    r.run(1);
+    expect(r.player.position.x).toBeLessThan(5);
+  });
+
   it('setControllable(false) ignores input', () => {
     const r = rig();
     r.player.setControllable(false);
@@ -531,5 +544,172 @@ describe('AutoplayBot', () => {
     expect(held).toBeGreaterThan(30);
     expect(r.player.position.z).toBeLessThan(-17);
     bot.dispose();
+  });
+
+  const view = { forward: new THREE.Vector3(0, 0, -1), right: new THREE.Vector3(1, 0, 0) };
+  function bossView(attack: Partial<BossView['attacks'][number]>): BossView {
+    return {
+      state: 'phase',
+      phase: 1,
+      bowT: 0,
+      p2Active: -1,
+      attacks: [
+        {
+          active: true,
+          stage: 'telegraph',
+          kind: 'drag',
+          ax: 0,
+          az: -7,
+          bx: 0,
+          bz: 10,
+          hw: 1.5,
+          t: 0.9,
+          telegraph: 1.25,
+          ...attack,
+        },
+      ],
+      wps: [],
+    };
+  }
+
+  it('steps (and dashes) out of a telegraphed eraser lane', () => {
+    const r = rig();
+    r.player.teleport(0.3, 0, 3, Math.PI);
+    const boss = bossView({});
+    const bot = new AutoplayBot(
+      {
+        input: r.input,
+        events: r.events,
+        tuning: TUNING,
+        targets: registry([]),
+        getPlayer: () => r.player,
+        view,
+        boss: () => boss,
+      },
+      {
+        path: [
+          [0, 3],
+          [0, 4],
+        ],
+      },
+    );
+    bot.drive(r.input.state, DT);
+    expect(bot.mode).toBe('dodge');
+    expect(r.input.state.dashPressed).toBe(true);
+    // the lane runs along z: the escape must be sideways
+    expect(Math.abs(r.input.state.dashDir.x)).toBeGreaterThan(0.9);
+    r.run(0.5, () => bot.drive(r.input.state, DT));
+    const margin = 1.5 + TUNING.player.radius;
+    expect(Math.abs(r.player.position.x)).toBeGreaterThan(margin);
+  });
+
+  it('sidesteps a pencil stroke flying at it', () => {
+    const r = rig();
+    const proj = {
+      capacity: 1,
+      x: [0],
+      z: [-8],
+      dx: [0],
+      dz: [1],
+      active: [1],
+    };
+    const bot = new AutoplayBot(
+      {
+        input: r.input,
+        events: r.events,
+        tuning: TUNING,
+        targets: registry([]),
+        getPlayer: () => r.player,
+        view,
+        projectiles: proj,
+      },
+      {
+        path: [
+          [0, 0],
+          [0, -20],
+        ],
+      },
+    );
+    bot.drive(r.input.state, DT);
+    expect(bot.mode).toBe('dodge');
+    expect(Math.abs(r.input.state.move.x)).toBeGreaterThan(0.8);
+  });
+
+  it('does not start a phase-2 print it cannot afford; fetches ink first', () => {
+    const r = rig();
+    r.energy.reset(20);
+    const boss: BossView = {
+      ...bossView({ active: false }),
+      phase: 2,
+      p2Active: 0,
+      wps: [
+        {
+          index: 3,
+          print: 0,
+          phase: 2,
+          alive: true,
+          exposed: false,
+          printed: false,
+          drawIn: 1,
+          x: 0,
+          y: 2,
+          z: -5,
+        },
+      ],
+    };
+    const bot = new AutoplayBot(
+      {
+        input: r.input,
+        events: r.events,
+        tuning: TUNING,
+        targets: registry([]),
+        getPlayer: () => r.player,
+        view,
+        boss: () => boss,
+      },
+      {
+        path: [
+          [0, 0],
+          [0, 1],
+        ],
+        inkWells: [[8, 4, 25]],
+      },
+    );
+    bot.drive(r.input.state, DT);
+    expect(r.input.state.crystalHeld).toBe(false);
+    expect(r.input.state.move.x).toBeGreaterThan(0.5); // heading for the well at +x
+    r.energy.reset(60);
+    for (let i = 0; i < 120; i++) {
+      bot.drive(r.input.state, DT);
+      r.player.step(DT);
+    }
+    expect(r.input.state.crystalHeld).toBe(true);
+  });
+});
+
+describe('Combat targeting', () => {
+  it('prefers a revealed Blot over a slightly nearer Smudge', () => {
+    const r = rig();
+    const smudge = Object.assign(new Target(-2.2, -1.5), { kind: 'smudge' });
+    const blot = Object.assign(new Target(2, -3.5), { kind: 'blot' });
+    const combat = new Combat(
+      {
+        events: r.events,
+        tuning: TUNING,
+        settings: r.settings,
+        input: r.input,
+        targets: registry([smudge, blot]),
+        collision: openWorld,
+      },
+      r.player,
+      r.energy,
+    );
+    r.input.state.boltPressed = true;
+    for (let i = 0; i < 60; i++) {
+      r.player.step(DT);
+      combat.step(DT);
+      r.input.state.boltPressed = false;
+    }
+    expect([blot.hits, smudge.hits, r.count('bolt:fire'), r.count('bolt:hit')]).toEqual([1, 0, 1, 1]);
   });
 });

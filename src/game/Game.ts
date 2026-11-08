@@ -123,7 +123,12 @@ export class Game {
       settings,
       render: this.render,
       reveal,
-      input: new Input({ element: canvas, overlay: document.getElementById('app'), leftHanded: false }),
+      // #app (not the canvas): HUD layers sit above the canvas; Input skips real UI controls itself
+      input: new Input({
+        element: document.getElementById('app') ?? canvas,
+        overlay: document.getElementById('app'),
+        leftHanded: false,
+      }),
       audio,
       collision: this.collision,
       targets: createTargets(),
@@ -253,8 +258,13 @@ export class Game {
     if (FLAGS.autoplay) {
       this.bot = installAutoplay(
         this.ctx,
-        { path: def.path, sketches: def.sketches.map((s) => ({ id: s.id, at: s.at })) },
+        {
+          path: def.path,
+          sketches: def.sketches.map((s) => ({ id: s.id, at: s.at })),
+          inkWells: def.inkWells,
+        },
         this.rig,
+        { boss: () => this.editor?.fsm ?? null, projectiles: this.enemies.projectiles },
       );
       if (this.editor) attachEditorBot(this.bot, this.editor, this.ctx, this.rig);
     }
@@ -325,6 +335,11 @@ export class Game {
         this.bossStartArmed = false;
         this.editor?.start();
       }
+    });
+    // A spawn group's last wave cleared → `<trigger>_cleared` (e.g. Level 3's boss door
+    // `requires: 'p3_arena_cleared'`). Without this bridge the door could never print.
+    ev.on('wave:cleared', (e) => {
+      if (e.last) ev.emit('trigger:fired', { id: `${e.trigger}_cleared` });
     });
     ev.on('tutorial:hint', (e) => ev.emit('ui:tutorial', e));
     ev.on('spawn:request', (e) => {
@@ -400,9 +415,13 @@ export class Game {
       const target = this.player.renderPosition;
       if (this.editor && this.editor.cameraWeight > 0) {
         this.bossFocus.copy(target).lerp(this.editor.focus, this.editor.cameraWeight * 0.5);
+        this.rig.zoom = 1 + this.editor.cameraWeight * 0.55; // keep the 7 m Editor and the wizard in frame
         this.rig.update(frameDt, this.bossFocus, this.player.velocity);
         this.editor.applyCamera(this.render.camera, frameDt);
-      } else this.rig.update(frameDt, target, this.player.velocity);
+      } else {
+        this.rig.zoom = 1;
+        this.rig.update(frameDt, target, this.player.velocity);
+      }
       this.player.faceCamera(this.render.camera);
       this.combat.render(alpha);
       this.pickups.render(this.render.shared.uTime!.value as number);

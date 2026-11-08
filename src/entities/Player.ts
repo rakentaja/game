@@ -334,6 +334,8 @@ export class Player implements PlayerAPI {
     energy?: Player['energyStore'],
   ) {
     this.pages = deps.tuning.player.maxPages;
+    // Respect Settings.vibration even when Input was built without installInput().
+    if (!haptics.settings) haptics.settings = deps.settings;
     this.energyStore = energy ?? {
       value: deps.tuning.energy.start,
       max: deps.tuning.energy.max,
@@ -426,7 +428,6 @@ export class Player implements PlayerAPI {
     ev.emit('fx:shake', { intensity: 0.5, duration: 0.3 });
     this.sfx('player_hurt');
     haptics.pulse([T.haptics.hurt, 40, T.haptics.hurt * 0.5], 0);
-    if (this.deps.stats) this.deps.stats.pagesTorn += dmg;
     if (this.pages <= 0) this.die();
   }
 
@@ -559,10 +560,15 @@ export class Player implements PlayerAPI {
       });
       m.frustumCulled = false;
     });
-    render.addOutline(root);
     this.model = root;
     this.squash.add(root);
+    // Find + stretch the staff before outlining so the hull is built from the final shape; the
+    // crystal holder is detached while hulls are added (the crystal draws its own contour).
     this.attachCrystal(root);
+    const holderParent = this.crystalHolder.parent;
+    this.crystalHolder.removeFromParent();
+    render.addOutline(root);
+    holderParent?.add(this.crystalHolder);
     this.buildActions(root, clips);
     this.animAcc = 1; // force an immediate pose
     this.tickAnim(0);
@@ -758,8 +764,10 @@ export class Player implements PlayerAPI {
     const oz = this.position.z;
     let nx = ox + dx;
     let nz = oz + dz;
-    // walkable area: slide along the boundary axis-by-axis
-    if (!C.walkable(nx, nz)) {
+    // walkable area: slide along the boundary axis-by-axis. If we're already outside (respawn
+    // point, a push-out at a corridor edge), never freeze: let any step through so the player
+    // can walk back in — otherwise every move is rejected and the wizard is stuck for good.
+    if (!C.walkable(nx, nz) && C.walkable(ox, oz)) {
       if (C.walkable(nx, oz)) nz = oz;
       else if (C.walkable(ox, nz)) nx = ox;
       else {
@@ -845,7 +853,6 @@ export class Player implements PlayerAPI {
     this.diedEmitted = false;
     this.held = false;
     this.cinematic = null;
-    if (this.deps.stats) this.deps.stats.deaths++;
     const a = this.acts.death;
     if (a) {
       a.reset();
@@ -1049,7 +1056,13 @@ export class Player implements PlayerAPI {
     let staff: THREE.Mesh | null = null;
     root.traverse((o) => {
       const m = o as THREE.Mesh;
-      if (m.isMesh && !(m as THREE.SkinnedMesh).isSkinnedMesh && /staff|weapon|cylinder/i.test(o.name))
+      if (
+        !staff &&
+        m.isMesh &&
+        !(m as THREE.SkinnedMesh).isSkinnedMesh &&
+        !o.name.endsWith(':hull') &&
+        /staff|weapon|cylinder/i.test(o.name)
+      )
         staff = m;
     });
     const holder = this.crystalHolder;
@@ -1081,6 +1094,18 @@ export class Player implements PlayerAPI {
     const bottom = wa.y > wb.y ? b : a;
     if (!sm.userData.stretched) {
       sm.userData.stretched = true;
+      // Quantized GLBs (KHR_mesh_quantization, int16/normalized) clamp at the original bounds:
+      // dequantize to float first so the stretched shaft can actually grow.
+      const src = sm.geometry.attributes.position as THREE.BufferAttribute;
+      if (src.normalized || !(src.array instanceof Float32Array)) {
+        const f = new Float32Array(src.count * 3);
+        for (let i = 0; i < src.count; i++) {
+          f[i * 3] = src.getX(i);
+          f[i * 3 + 1] = src.getY(i);
+          f[i * 3 + 2] = src.getZ(i);
+        }
+        sm.geometry.setAttribute('position', new THREE.BufferAttribute(f, 3));
+      }
       const dir = top.clone().sub(bottom).normalize();
       const len = top.distanceTo(bottom);
       const p = sm.geometry.attributes.position as THREE.BufferAttribute;
@@ -1226,11 +1251,12 @@ export interface LoadedCharacter {
 }
 
 /**
- * Load the wizard: `public/assets/wizard.glb` (assets pipeline) if it exists, else `fallback()`
+ * Load the wizard: `public/assets/wizard.glb` (resolved against Vite's BASE_URL so the /game/
+ * Pages deploy works) if it exists, else `fallback()`
  * (the harness passes the POC's embedded CC0 GLB).
  */
 export async function loadWizard(
-  url = '/assets/wizard.glb',
+  url = `${import.meta.env.BASE_URL}assets/wizard.glb`,
   fallback?: () => Promise<ArrayBuffer>,
 ): Promise<LoadedCharacter> {
   const loader = new GLTFLoader();

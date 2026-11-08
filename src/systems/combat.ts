@@ -291,7 +291,7 @@ export class Combat {
       this.cooldown = 0.25;
       return;
     }
-    const target = this.deps.targets.nearest(this.player.position, B.maxRange);
+    const target = this.pickTarget(B.maxRange);
     this.player.castTap(target ? target.position : null);
     this.pendingTarget = target;
     this.pendingFire = B.castDelay;
@@ -299,6 +299,44 @@ export class Combat {
     if (this.deps.stats) this.deps.stats.boltsFired++;
     this.deps.events.emit('bolt:fire', { targetId: target ? target.id : null });
   }
+
+  /**
+   * Nearest revealed target, except Blots count as if 45% closer: they choke the crystal, so a
+   * tap should go to them first (PLAN §3.3 "kill it first"). Targets without line of sight are
+   * skipped.
+   */
+  private pickTarget(maxRange: number): Damageable | null {
+    this.pickBest = null;
+    this.pickScore = maxRange * maxRange;
+    this.deps.targets.forEach(this.pickScan);
+    return this.pickBest;
+  }
+
+  private pickBest: Damageable | null = null;
+  private pickScore = 0;
+  private readonly pickScan = (t: Damageable) => {
+    if (!t.alive || !t.revealed) return;
+    const p = this.player.position;
+    const dx = t.position.x - p.x;
+    const dz = t.position.z - p.z;
+    const edge = Math.max(0, Math.sqrt(dx * dx + dz * dz) - t.radius);
+    // Blots choke the crystal; a scribbler mid wind-up is about to shoot (a hit cancels the shot)
+    const e = t as Damageable & { kind?: string; windup?: number };
+    const k = e.kind === 'blot' ? 0.55 : e.kind === 'scribbler' && (e.windup ?? 0) > 0.1 ? 0.6 : 1;
+    const score = edge * k * (edge * k);
+    // never auto-aim a ghost through a wall / the gate (the bolt would splat on it). Boss weak
+    // points sit on the Editor's own body, which is itself a LOS blocker, so they're exempt.
+    if (
+      e.kind !== undefined &&
+      edge > 1.5 &&
+      !this.deps.collision.segmentClear(p.x, p.z, t.position.x, t.position.z)
+    )
+      return;
+    if (edge <= this.deps.tuning.bolt.maxRange && score <= this.pickScore) {
+      this.pickScore = score;
+      this.pickBest = t;
+    }
+  };
 
   private spawnBolt(): void {
     const b = this.bolts.find((x) => !x.live) ?? null;
