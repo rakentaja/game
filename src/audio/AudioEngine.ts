@@ -38,6 +38,8 @@ import { BAKE_ORDER, SFX, SFX_IDS } from './synth/sfx';
 
 const SPATIAL_VOICES = 18;
 const FLAT_VOICES = 10;
+/** Music sits ~4 LU under SFX at equal faders (measured: explore ≈ -23 LUFS, SFX reel ≈ -18). */
+const MUSIC_TRIM = 0.6;
 const PENTA = [0, 2, 4, 7, 9, 12, 14, 16, 19];
 
 interface Voice {
@@ -160,7 +162,7 @@ export class AudioEngine implements AudioAPI {
     this.pauseLP.frequency.value = 20000;
     this.pauseLP.Q.value = 0.5;
     this.musicIn = ac.createGain();
-    this.musicIn.gain.value = 0.85;
+    this.musicIn.gain.value = MUSIC_TRIM;
     this.musicIn.connect(this.pauseLP);
     musicVerb.connect(musicVerbRet);
     musicVerbRet.connect(this.pauseLP);
@@ -398,7 +400,7 @@ export class AudioEngine implements AudioAPI {
     this.paused = p;
     const now = this.ac.currentTime;
     this.pauseLP.frequency.setTargetAtTime(p ? 650 : 20000, now, p ? 0.12 : 0.3);
-    this.musicIn.gain.setTargetAtTime(p ? 0.85 * dbToGain(-5) : 0.85, now, 0.2);
+    this.musicIn.gain.setTargetAtTime(p ? MUSIC_TRIM * dbToGain(-5) : MUSIC_TRIM, now, 0.2);
     for (const h of this.loops) h.gain.gain.setTargetAtTime(p ? 0 : h.volume, now, 0.05);
   }
 
