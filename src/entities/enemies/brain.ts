@@ -18,6 +18,14 @@ export interface BrainWorld {
   readonly hasPlayer: boolean;
   /** Base (undrained) reveal target radius this step, before any blot suppression. */
   readonly baseRevealTarget: number;
+  /** Difficulty: >1 stretches windups/cooldowns. */
+  readonly tempo: number;
+  /** Difficulty: movement speed multiplier. */
+  readonly speedMul: number;
+  /** Difficulty: blot drain multiplier. */
+  readonly drainMul: number;
+  /** Ask for one of the limited attack tokens (smudge dart / scribbler shot). */
+  requestAttack(e: Enemy): boolean;
   telegraph(e: Enemy, duration: number): void;
   fireProjectile(e: Enemy, dirX: number, dirZ: number): void;
   /** Contact damage attempt; returns true if it landed. */

@@ -1,4 +1,4 @@
-import { MASK_GLSL, NOISE_GLSL } from './glsl';
+import { NOISE_GLSL } from './glsl';
 
 /**
  * Instanced ribbons on a unit quad (x 0..1 along, y -0.5..0.5 across):
@@ -48,7 +48,7 @@ void main(){
 
 export const FX_FRAG = /* glsl */ `
 ${NOISE_GLSL}
-${MASK_GLSL}
+__INK_MASK__
 uniform vec3 uRamp0, uRamp1, uRamp2, uRamp3;
 uniform float uTime;
 varying vec2 vQ;
@@ -105,8 +105,16 @@ void main(){
     gl_FragColor = vec4(uRamp0, 1.0);
     return;
   }
-  // Drain tendril: ink rope with beads flowing toward the blot (x=0).
+  // Drain tendril: ink rope with beads flowing toward the blot (x=0). While latching (vL.x =
+  // windup) it is drawn as a dashed pencil sketch growing toward the crystal.
   if (m < 0.35 || vL.z < 0.02) discard;
+  if (vL.x > 0.01 && vL.z < 0.76) {
+    if (x > vL.x * 1.1) discard;
+    if (fract(x * vLen / 0.35 - uTime * 2.0) > 0.55) discard;
+    if (abs(y) > 0.45) discard;
+    gl_FragColor = vec4(uRamp0, 1.0);
+    return;
+  }
   float bead = 0.5 + 0.5 * sin(x * 22.0 + uTime * 14.0);
   float w = (0.35 + 0.65 * bead * 0.6) * vL.z * (1.0 - smoothstep(0.85, 1.0, x));
   float ay = abs(y) + rag * 0.5;
@@ -135,7 +143,7 @@ void main(){
 
 export const PARTICLE_FRAG = /* glsl */ `
 ${NOISE_GLSL}
-${MASK_GLSL}
+__INK_MASK__
 uniform vec3 uRamp0, uRamp1, uRamp2, uRamp3;
 varying vec2 vUv;
 varying vec4 vQ;

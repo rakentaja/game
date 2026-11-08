@@ -7,6 +7,7 @@ import type {
   PlayerAPI,
   RevealAPI,
   RunStats,
+  Settings,
   TargetRegistry,
 } from '../../core/types';
 import type { Tuning } from '../../data/tuning';
@@ -41,6 +42,8 @@ export interface EnemyDeps {
   player: PlayerAPI | null;
   stats?: RunStats;
   collision?: CollisionAPI | null;
+  /** For difficulty scaling (TUNING.difficulty[settings.difficulty]). Defaults to normal. */
+  settings?: Pick<Settings, 'difficulty'>;
 }
 
 /** Visual hooks; the renderer implements these to spawn paper/ink particles. */
@@ -71,6 +74,11 @@ export class EnemySystem implements EnemyOwner, BrainWorld {
   playerRadius = 0.35;
   hasPlayer = false;
   baseRevealTarget = 0;
+  tempo = 1;
+  speedMul = 1;
+  drainMul = 1;
+  private maxAttackers = 2;
+  private attackers = 0;
 
   private nextId = 1;
   private aliveN = 0;
@@ -85,6 +93,35 @@ export class EnemySystem implements EnemyOwner, BrainWorld {
   ) {
     this.rng = new Rng(seed);
     for (let i = 0; i < ENEMY_POOL; i++) this.pool.push(new Enemy(this));
+    const ev = deps.events;
+    this.offs.push(
+      // The Editor's summoned ghosts tear apart with it.
+      ev.on('boss:death', (e) => {
+        if (e.stage === 'inked') this.killAll();
+      }),
+      // Respawn grace: nobody attacks the instant the player is back on their feet.
+      ev.on('player:respawn', () => this.calm()),
+    );
+  }
+
+  private readonly offs: (() => void)[] = [];
+
+  /** Cancel every attack in flight and restart the first-attack grace (respawn, cutscenes). */
+  calm(): void {
+    for (const e of this.pool) {
+      if (!e.alive) continue;
+      e.age = 0;
+      e.ballistic = false;
+      e.windup = e.lunge = e.drain = 0;
+      if (e.state === AiState.Attack) BRAINS[e.kind].stalk(e, this);
+    }
+    this.projectiles.clear();
+  }
+
+  dispose(): void {
+    for (const off of this.offs) off();
+    this.offs.length = 0;
+    this.clear();
   }
 
   get tuning(): Tuning {
@@ -138,6 +175,7 @@ export class EnemySystem implements EnemyOwner, BrainWorld {
     e.speed01 = 0;
     e.lagX = e.lagZ = 0;
     e.contactCd = 0;
+    e.age = 0;
     e.fireCd = 0;
     e.ballistic = false;
     e.hitPlayer = false;
@@ -182,12 +220,24 @@ export class EnemySystem implements EnemyOwner, BrainWorld {
     this.playerRadius = this.tuning.player.radius;
     this.baseRevealTarget = d.reveal.targetRadius;
     this.suppress = 1;
+    const diff = this.tuning.difficulty[d.settings?.difficulty ?? 'normal'] ?? this.tuning.difficulty.normal;
+    this.tempo = diff.enemyTempo ?? 1;
+    if (p && p.energy < this.tuning.bolt.cost) this.tempo *= ai.mercyTempo;
+    this.speedMul = diff.enemySpeed ?? 1;
+    this.drainMul = diff.drainMul ?? 1;
+    this.maxAttackers = Math.min(ai.maxAttackers, diff.maxAttackers ?? ai.maxAttackers);
+    this.attackers = 0;
+    for (let i = 0; i < this.pool.length; i++) {
+      const e = this.pool[i]!;
+      if (e.alive && e.state === AiState.Attack && e.kind !== 'blot') this.attackers++;
+    }
 
     const pool = this.pool;
     for (let i = 0; i < pool.length; i++) {
       const e = pool[i]!;
       if (!e.active) continue;
       e.stateT += dt;
+      e.age += dt;
       e.hitT = Math.max(0, e.hitT - dt / ai.hitFlash);
       e.contactCd = Math.max(0, e.contactCd - dt);
       e.spawnT = Math.min(1, e.spawnT + dt / ai.spawnTime);
@@ -235,8 +285,10 @@ export class EnemySystem implements EnemyOwner, BrainWorld {
     }
 
     if (this.suppress < 1) {
-      const floor = this.baseRevealTarget * t.blotAi.minRadiusFactor;
-      d.reveal.targetRadius = Math.max(floor, this.baseRevealTarget * this.suppress);
+      // Floor keeps a latched blot lit & shootable; never raises a radius that's already lower.
+      const base = this.baseRevealTarget;
+      const floor = Math.min(base, Math.max(t.blotAi.minRadius, base * t.blotAi.minRadiusFactor));
+      d.reveal.targetRadius = Math.max(floor, base * this.suppress);
     }
 
     this.stepProjectiles(dt);
@@ -367,6 +419,13 @@ export class EnemySystem implements EnemyOwner, BrainWorld {
   }
 
   // ───────────── BrainWorld ─────────────
+
+  requestAttack(e: Enemy): boolean {
+    if (e.age < this.tuning.enemies.ai.firstAttackDelay) return false;
+    if (this.attackers >= this.maxAttackers) return false;
+    this.attackers++;
+    return true;
+  }
 
   telegraph(e: Enemy, duration: number): void {
     this.deps.events.emit('enemy:telegraph', { id: e.id, kind: e.kind, duration });

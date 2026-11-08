@@ -31,6 +31,8 @@ export class Enemy implements EnemyAPI {
 
   state: AiState = AiState.Idle;
   stateT = 0;
+  /** Seconds since spawn. */
+  age = 0;
   stateDur = 0;
   /** Sub-phase inside a state (e.g. smudge windup=0 / dart=1). */
   phase = 0;
@@ -48,6 +50,8 @@ export class Enemy implements EnemyAPI {
   hitPlayer = false;
   /** Velocity is driven directly by the brain (dart), skip steering this step. */
   ballistic = false;
+  /** Smudge: distance to the aim point when the dart launched. */
+  dartDist = 0;
 
   // Visual channels (0..1), read by the renderer.
   revealVis = 0;

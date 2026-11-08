@@ -1,11 +1,13 @@
 import * as THREE from 'three';
 import { PAL } from '../../data/palette';
+import { REVEAL_GLSL } from '../../render/reveal/revealMath';
 import { AiState } from '../../systems/ai/fsm';
 import { BODY_FRAG, BODY_VERT } from './bodyShader';
 import type { Enemy } from './Enemy';
 import { KIND_INDEX } from './Enemy';
 import { ENEMY_POOL, type EnemyFxSink, type EnemySystem, PROJECTILE_POOL } from './EnemySystem';
 import { FX_FRAG, FX_VERT, PARTICLE_FRAG, PARTICLE_VERT } from './fxShader';
+import { MASK_GLSL, MASK_TOKEN, renderMaskGlsl } from './glsl';
 
 const FX_CAP = ENEMY_POOL * 3 + PROJECTILE_POOL;
 const PROJ_LEN = 1.25;
@@ -65,6 +67,12 @@ export interface EnemyRendererOptions {
   bodyMaterial?: THREE.ShaderMaterial;
   /** Crystal light position source; defaults to reveal.center + 1.9 m. */
   crystalPos?: () => THREE.Vector3;
+  /**
+   * In-game: render's shared look uniforms + RevealSystem uniforms. Enemies then use the exact
+   * reveal field (history map, sources, blank page), the shared key light / shadow / fog, and
+   * write ink-class alpha for the post pass, matching InkMaterial. Omit in harnesses.
+   */
+  inkContext?: { shared: Record<string, THREE.IUniform>; reveal: Record<string, THREE.IUniform> };
 }
 
 /**
@@ -89,6 +97,7 @@ export class EnemyRenderer implements EnemyFxSink {
   private fL: THREE.InstancedBufferAttribute;
   private pQ: THREE.InstancedBufferAttribute;
   private time = 0;
+  private readonly ownMask: boolean;
   private crystalPos: () => THREE.Vector3;
   private readonly crystalScratch = new THREE.Vector3();
 
@@ -144,7 +153,19 @@ export class EnemyRenderer implements EnemyFxSink {
       uRamp2: { value: col(ramp[2]) },
       uRamp3: { value: col(ramp[3]) },
       uOutlineW: { value: 0.035 },
+      uFogNear: { value: 1e4 },
+      uFogFar: { value: 2e4 },
     };
+    const ink = opts.inkContext;
+    this.ownMask = !ink;
+    if (ink) {
+      Object.assign(this.uniforms, ink.reveal);
+      if (!ink.reveal.uNoise && ink.shared.uNoise) this.uniforms.uNoise = ink.shared.uNoise;
+      for (const k of ['uKeyDir', 'uShadow', 'uFogNear', 'uFogFar'] as const)
+        if (ink.shared[k]) this.uniforms[k] = ink.shared[k]!;
+    }
+    const mask = ink ? renderMaskGlsl(REVEAL_GLSL) : MASK_GLSL;
+    const withMask = (src: string) => src.split(MASK_TOKEN).join(mask);
     const u = this.uniforms;
 
     // ── bodies + outlines ──
@@ -164,13 +185,13 @@ export class EnemyRenderer implements EnemyFxSink {
       new THREE.ShaderMaterial({
         uniforms: { ...u, uOutline: { value: 0 } },
         vertexShader: BODY_VERT,
-        fragmentShader: BODY_FRAG,
+        fragmentShader: withMask(BODY_FRAG),
         side: THREE.DoubleSide,
       });
     const outlineMat = new THREE.ShaderMaterial({
       uniforms: { ...u, uOutline: { value: 1 } },
       vertexShader: BODY_VERT,
-      fragmentShader: BODY_FRAG,
+      fragmentShader: withMask(BODY_FRAG),
       side: THREE.BackSide,
     });
     this.body = new THREE.InstancedMesh(grid, bodyMat, ENEMY_POOL);
@@ -196,7 +217,7 @@ export class EnemyRenderer implements EnemyFxSink {
     const fxMat = new THREE.ShaderMaterial({
       uniforms: u,
       vertexShader: FX_VERT,
-      fragmentShader: FX_FRAG,
+      fragmentShader: withMask(FX_FRAG),
       side: THREE.DoubleSide,
       depthWrite: true,
       polygonOffset: true,
@@ -237,7 +258,7 @@ export class EnemyRenderer implements EnemyFxSink {
     const pMat = new THREE.ShaderMaterial({
       uniforms: u,
       vertexShader: PARTICLE_VERT,
-      fragmentShader: PARTICLE_FRAG,
+      fragmentShader: withMask(PARTICLE_FRAG),
       side: THREE.DoubleSide,
     });
     this.particles = new THREE.InstancedMesh(pquad, pMat, n);
@@ -258,10 +279,12 @@ export class EnemyRenderer implements EnemyFxSink {
     const reveal = sys.reveal;
     const u = this.uniforms;
     u.uTime!.value = this.time;
-    (u.uRevealCenter!.value as THREE.Vector3).copy(reveal.center);
-    u.uRevealRadius!.value = reveal.radius;
-    u.uRevealEdge!.value = sys.tuning.crystal.edgeWidth;
-    u.uBlankPage!.value = reveal.blankPage;
+    if (this.ownMask) {
+      (u.uRevealCenter!.value as THREE.Vector3).copy(reveal.center);
+      u.uRevealRadius!.value = reveal.radius;
+      u.uRevealEdge!.value = sys.tuning.crystal.edgeWidth;
+      u.uBlankPage!.value = reveal.blankPage;
+    }
     const cp = this.crystalPos();
     (u.uCrystalPos!.value as THREE.Vector3).copy(cp);
 
@@ -371,8 +394,9 @@ export class EnemyRenderer implements EnemyFxSink {
         );
       }
       // blot drain tendril
-      if (e.kind === 'blot' && e.drain > 0.04) {
-        this.putFx(x, y + 0.55, z, 3, cp.x, cp.y - 0.25, cp.z, 0.2, 0, e.seed, Math.min(1, e.drain * 1.4));
+      const reach = Math.max(e.drain * 1.4, e.windup * 0.75);
+      if (e.kind === 'blot' && reach > 0.04) {
+        this.putFx(x, y + 0.55, z, 3, cp.x, cp.y - 0.25, cp.z, 0.2, e.windup, e.seed, Math.min(1, reach));
       }
     }
     const pr = sys.projectiles;
