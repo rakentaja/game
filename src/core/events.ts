@@ -15,6 +15,12 @@ export interface GameEvents {
   'enemy:spawn': { id: number; kind: EnemyKind };
   'enemy:revealed': { id: number; kind: EnemyKind; first: boolean };
   'enemy:died': { id: number; kind: EnemyKind; position: [number, number, number] };
+  /** Enemy death drops ink at `position`; ink-energy decides pickup (enemies workstream). */
+  'ink:drop': { position: [number, number, number]; amount: number; kind: EnemyKind };
+  /** An enemy starts a readable attack windup (sound + UI cue). `duration` = seconds until it lands. */
+  'enemy:telegraph': { id: number; kind: EnemyKind; duration: number };
+  /** Spawner: every enemy of `wave` in trigger group `trigger` ('' = immediate group) is dead. */
+  'wave:cleared': { trigger: string; wave: number; last: boolean };
   'ink:collected': { amount: number; total: number };
   'energy:changed': { value: number; max: number };
   'sketch:progress': { id: string; t: number };
