@@ -1,5 +1,8 @@
 {
-  "meta": { "name": "Türkçe", "short": "TR" },
+  "meta": {
+    "name": "Türkçe",
+    "short": "TR"
+  },
   "common": {
     "back": "Geri",
     "done": "Tamam",
@@ -166,6 +169,25 @@
     "swish": "HIŞŞ!",
     "scrub": "SİL SİL!",
     "crumple": "HIŞIR!",
-    "fin": "SON MU?"
+    "fin": "SON MU?",
+    "kachunk": "KAÇUNK!"
+  },
+  "style": {
+    "label": "Editör notu: {grade}",
+    "grade": {
+      "D": "sönük",
+      "C": "temiz",
+      "B": "cesur",
+      "A": "ustaca",
+      "S": "çarpıcı!",
+      "P": "BASILSIN!"
+    }
+  },
+  "rewrite": {
+    "cut": "Silindi: {verbs}",
+    "bolt": "mürekkep oku",
+    "dash": "atılma",
+    "crystal": "ışık",
+    "print": "baskı"
   }
 }

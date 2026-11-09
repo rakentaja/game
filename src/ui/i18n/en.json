@@ -1,5 +1,8 @@
 {
-  "meta": { "name": "English", "short": "EN" },
+  "meta": {
+    "name": "English",
+    "short": "EN"
+  },
   "common": {
     "back": "Back",
     "done": "Done",
@@ -166,6 +169,25 @@
     "swish": "SWISH!",
     "scrub": "SCRUB!",
     "crumple": "CRUMPLE!",
-    "fin": "THE END?"
+    "fin": "THE END?",
+    "kachunk": "KA-CHUNK!"
+  },
+  "style": {
+    "label": "Editor's mark: {grade}",
+    "grade": {
+      "D": "dull",
+      "C": "clean",
+      "B": "bold",
+      "A": "artful",
+      "S": "striking!",
+      "P": "PUBLISH IT!"
+    }
+  },
+  "rewrite": {
+    "cut": "Struck out: {verbs}",
+    "bolt": "bolts",
+    "dash": "dash",
+    "crystal": "the light",
+    "print": "printing"
   }
 }
