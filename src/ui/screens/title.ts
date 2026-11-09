@@ -18,6 +18,11 @@ export interface TitleHandlers {
   /** Daily Issue entry (number, rule i18n key, today's best). */
   daily?: { number: number; ruleKey: string; bestS: number | null } | null;
   playDaily?(): void;
+  /**
+   * Optional override for the "Co-op" button. When absent, the title opens the lazily loaded
+   * co-op lobby itself (src/ui/screens/coop.ts) and returns here on Back.
+   */
+  coop?(joinCode: string | null): void;
 }
 
 function fmtTime(s: number): string {
@@ -31,6 +36,8 @@ export const VERSION = '0.1.0';
 export class TitleScreen extends Screen {
   private logo: LogoSvg | null = null;
   private handlers: TitleHandlers | null = null;
+  /** `?room=CODE` invite links open the lobby once, on the first title show. */
+  private inviteHandled = false;
 
   constructor(env: UIEnv) {
     super(env);
@@ -40,6 +47,26 @@ export class TitleScreen extends Screen {
     this.handlers = handlers;
     this.mount();
     this.focusFirst('.cx-btn.primary');
+    if (!this.inviteHandled) {
+      this.inviteHandled = true;
+      const room = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('room') : null;
+      if (room) this.openCoop(room);
+    }
+  }
+
+  /** Co-op lobby: lazy chunk (net code is never downloaded by solo players). */
+  private openCoop(joinCode: string | null = null): void {
+    const hd = this.handlers!;
+    if (hd.coop) {
+      hd.coop(joinCode);
+      return;
+    }
+    void import('./coop').then(({ CoopScreen }) => {
+      if (!this.visible) return;
+      this.hide();
+      const lobby = new CoopScreen(this.env);
+      lobby.show({ joinCode, onBack: () => this.show(hd) });
+    });
   }
 
   hide(): void {
@@ -147,6 +174,10 @@ export class TitleScreen extends Screen {
             h('button', { class: 'cx-btn small' }, frag(ICON_BOOK), h('span', null, t('title.credits'))),
             () => hd.credits(),
           ),
+        ),
+        this.btn(
+          h('button', { class: 'cx-btn small', 'data-act': 'coop' }, h('span', null, t('coop.button'))),
+          () => this.openCoop(),
         ),
         h('div', { class: 'title-version' }, t('title.version', { v: VERSION })),
       ),

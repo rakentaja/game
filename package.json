@@ -16,7 +16,9 @@
     "assets:validate": "bun scripts/validate.ts"
   },
   "dependencies": {
-    "three": "^0.187.0"
+    "@trystero-p2p/mqtt": "0.26.0",
+    "three": "^0.187.0",
+    "trystero": "0.26.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.6",

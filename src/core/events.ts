@@ -95,6 +95,18 @@ export interface GameEvents {
   'combat:nib': { id: number; kill: boolean };
   /** [enemies] Encounter director intensity 0..1 and beat. */
   'director:phase': { phase: 'build' | 'peak' | 'relax'; intensity: number };
+  /**
+   * Co-op lobby: host pressed Start and both ends agreed (net workstream, src/ui/screens/coop.ts).
+   * `at` is host-clock ms; get the live session with `(await import('../net')).activeSession()`.
+   */
+  'coop:start': {
+    code: string;
+    role: 'host' | 'guest';
+    slot: 0 | 1;
+    seed: number;
+    at: number;
+    heroes: string[];
+  };
 }
 
 type Handler<T> = (payload: T) => void;

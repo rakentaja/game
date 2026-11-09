@@ -1,0 +1,212 @@
+/* Co-op lobby (lazy chunk; tokens from theme.css). */
+.coop-card {
+  width: min(100%, 540px);
+}
+.coop-body {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1em;
+}
+.coop-body > .cx-btn.primary {
+  align-self: center;
+}
+.coop-sub {
+  margin: -0.3em 0 0.2em;
+  text-align: center;
+  color: var(--staff-2);
+}
+.coop-join {
+  margin: 0.4em 0 0;
+  padding-top: 1.3em;
+}
+.coop-join-row {
+  display: flex;
+  gap: 0.6em;
+  align-items: center;
+}
+.coop-code-input,
+.coop-link {
+  min-width: 0;
+  flex: 1 1 auto;
+  min-height: 48px;
+  padding: 0.3em 0.6em 0.15em;
+  background: var(--ghost-3);
+  color: var(--ink);
+  border: 3px solid var(--ink);
+  border-radius: 4px 7px 3px 6px;
+  box-shadow: inset 2px 2px 0 var(--ghost-1);
+  font-family: var(--f-display);
+  font-size: 1.5em;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.coop-code-input:focus-visible,
+.coop-link:focus-visible {
+  outline: 3px solid var(--gold);
+  outline-offset: 2px;
+}
+.coop-code-input[aria-invalid="true"] {
+  border-color: var(--red-1);
+  background: var(--red-3);
+}
+.coop-err {
+  margin: 0.5em 0 0;
+  color: var(--red-1);
+  font-weight: 700;
+  font-size: 0.9em;
+}
+.coop-code {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1em;
+}
+.coop-code small {
+  font-weight: 700;
+  color: var(--staff-2);
+}
+.coop-code b {
+  font-size: clamp(2.2em, 11vmin, 3.4em);
+  letter-spacing: 0.22em;
+  padding: 0.1em 0.3em 0 0.52em;
+  background: var(--gold);
+  border: 3px solid var(--ink);
+  box-shadow: 5px 5px 0 var(--ink);
+  transform: rotate(-1.5deg);
+  user-select: all;
+}
+.coop-share {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6em;
+  justify-content: center;
+}
+.coop-link {
+  flex-basis: 100%;
+  font-family: var(--f-letter);
+  font-size: 0.85em;
+  letter-spacing: 0;
+  text-transform: none;
+  min-height: 40px;
+}
+.coop-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35em 0.6em;
+  margin: 0;
+  min-height: 1.6em;
+  font-weight: 700;
+  text-align: center;
+}
+.coop-dot {
+  width: 0.8em;
+  height: 0.8em;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: var(--ghost-1);
+}
+.coop-dot[data-s="connected"] {
+  background: var(--teal-3);
+}
+.coop-dot[data-s="reconnecting"],
+.coop-dot[data-s="connecting"],
+.coop-dot[data-s="waiting"] {
+  background: var(--gold);
+}
+.coop-dot[data-s="failed"] {
+  background: var(--red-2);
+}
+.coop-tier,
+.coop-rtt {
+  padding: 0.05em 0.5em 0;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--f-display);
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.85em;
+}
+.coop-seats {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.7em;
+}
+.coop-seat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1em;
+  padding: 0.6em 0.7em;
+  border: 2.5px solid var(--ink);
+  border-radius: 3px 6px 4px 7px;
+  background: var(--ghost-3);
+}
+.coop-seat[data-on="false"] {
+  border-style: dashed;
+  color: var(--staff-2);
+}
+.coop-seat[data-ready="true"] {
+  background: var(--gold);
+  box-shadow: 3px 3px 0 var(--ink);
+}
+.coop-seat b {
+  font-family: var(--f-display);
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 1.15em;
+}
+.coop-seat small {
+  color: var(--staff-2);
+  font-size: 0.8em;
+}
+.coop-empty {
+  font-style: italic;
+}
+.coop-heroes button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1 1 40%;
+}
+.coop-heroes button small {
+  font-family: var(--f-letter);
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.72em;
+}
+.coop-heroes button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  border-style: dashed;
+  box-shadow: none;
+}
+.coop-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8em;
+  justify-content: center;
+  align-items: center;
+}
+.coop-actions .cx-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+.coop-wait {
+  flex-basis: 100%;
+  margin: 0;
+  text-align: center;
+  color: var(--staff-2);
+}
+@media (max-width: 380px) {
+  .coop-seats {
+    grid-template-columns: 1fr;
+  }
+}
