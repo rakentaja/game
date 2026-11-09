@@ -24,6 +24,7 @@ import type {
   Damageable,
   GameContext,
   InputAPI,
+  RevealAPI,
   RunStats,
   Settings,
   SfxId,
@@ -207,6 +208,8 @@ interface Bolt {
   oz: number;
   life: number;
   target: Damageable | null;
+  /** Last target pierced (Splash Page) so a piercing bolt hits each ghost once. */
+  hitId: number;
   /** Ink Rhythm size multiplier and kill-chain trail width multiplier. */
   scale: number;
   width: number;
@@ -238,6 +241,8 @@ export interface CombatDeps {
   audio?: Pick<AudioAPI, 'play'>;
   /** Shared beat clock (Ink Rhythm); read at use time, may be null. */
   beat?: () => BeatAPI | null | undefined;
+  /** Reveal mask (hero perks: Chiaroscuro edge bonus, Wet Edge puddles). Optional. */
+  reveal?: RevealAPI;
 }
 
 /** Scribbler pencil strokes in flight (EnemySystem.projectiles), for Ink Parry. */
@@ -320,7 +325,7 @@ export class Combat {
   private scanBest = 0;
   private readonly scan = (t: Damageable) => {
     const b = this.scanBolt!;
-    if (!t.alive || !t.revealed) return;
+    if (!t.alive || !t.revealed || t.id === b.hitId) return;
     const dx = t.position.x - b.x;
     const dz = t.position.z - b.z;
     const dy = t.position.y + 0.6 - b.y;
@@ -369,6 +374,7 @@ export class Combat {
         oz: 0,
         life: 0,
         target: null,
+        hitId: -1,
         scale: 1,
         width: 1,
         trail: new Float32Array(TRAIL * 3),
@@ -391,6 +397,7 @@ export class Combat {
       this.marks.delete(e.id);
     });
     deps.events.on('player:dash', (e) => this.lassoPush(e.from[0], e.from[2]));
+    player.boltRing = (n) => this.fireRing(n);
 
     const ink = new THREE.Color(PAL.ink);
     const core = new THREE.Color(PAL.glowCore);
@@ -518,8 +525,9 @@ export class Combat {
     this.time += dt;
     if (this.cooldown > 0) this.cooldown -= dt;
     if (this.buffer > 0) this.buffer -= dt;
-    if (this.deps.input.state.boltPressed) this.buffer = B.buffer;
     const p = this.player;
+    // non-bolt heroes handle the tap in their kit (Player.step)
+    if (this.deps.input.state.boltPressed && p.kit.mods.baseBolt) this.buffer = B.buffer;
     if (this.buffer > 0 && p.verbCut.bolt) {
       // the Editor struck out bolts: swallow the tap with a fizzle
       this.buffer = 0;
@@ -560,6 +568,12 @@ export class Combat {
     this.cooldown = B.cooldown;
     if (this.deps.stats) this.deps.stats.boltsFired++;
     this.deps.events.emit('bolt:fire', { targetId: target ? target.id : null });
+    const kit = this.player.kit as typeof this.player.kit & { aimX?: number | null; aimZ?: number | null };
+    if (target) {
+      kit.aimX = target.position.x;
+      kit.aimZ = target.position.z;
+    }
+    kit.onTap();
   }
 
   /**
@@ -615,6 +629,7 @@ export class Combat {
     b.y = b.py = b.oy = c.y;
     b.z = b.pz = b.oz = c.z;
     b.target = this.pendingTarget;
+    b.hitId = -1;
     b.scale = this.pendingScale;
     const C = this.deps.tuning.combatPlus;
     b.width = Math.min(C.trailWidthMax, (1 + this.killChain * C.trailWidthPerChain) * b.scale);
@@ -687,7 +702,12 @@ export class Combat {
     const B = T.bolt;
     const C = T.combatPlus;
     const marked = this.isMarked(t);
-    const r = critRule((t as Target).hp, B.damage, B.critDamageMul, this.isAttacking(t) || marked);
+    const r = critRule(
+      (t as Target).hp,
+      B.damage + this.edgeBonus(t),
+      B.critDamageMul,
+      this.isAttacking(t) || marked,
+    );
     const kill = r.kill;
     const critical = r.critical;
     // knockback along the bolt: report the hit as coming from behind the target on the bolt's line
@@ -728,7 +748,52 @@ export class Combat {
       ev.emit('fx:hitstop', { duration: critical ? H.crit : kill ? H.kill : H.hit });
       ev.emit('fx:shake', { intensity: critical ? 0.3 : kill ? 0.22 : 0.1, duration: 0.15 });
     }
+    if (this.player.kit.mods.pierce) {
+      // Splash Page: the bolt keeps flying straight through
+      b.hitId = t.id;
+      b.target = null;
+      this.addSplat(b.x, b.y, b.z, 0.8 * b.scale);
+      return;
+    }
     this.kill(b, b.y, (critical ? 1.6 : 1) * b.scale);
+  }
+
+  /** Chiaroscuro: +bonus when the target stands in the mask's edge band. */
+  private edgeBonus(t: Damageable): number {
+    const bonus = this.player.kit.mods.edgeBonus;
+    const rv = this.deps.reveal;
+    if (!bonus || !rv) return 0;
+    const dx = t.position.x - rv.center.x;
+    const dz = t.position.z - rv.center.z;
+    const band = this.deps.tuning.heroes.inker.chiaroscuro.band;
+    return Math.abs(Math.sqrt(dx * dx + dz * dz) - rv.radius) <= band ? bonus : 0;
+  }
+
+  /** Spot Black: `n` untargeted bolts in a ring around the crystal (free). */
+  fireRing(n: number): void {
+    const B = this.deps.tuning.bolt;
+    const c = this.player.crystalPos;
+    for (let i = 0; i < n; i++) {
+      const b = this.bolts.find((x) => !x.live);
+      if (!b) return;
+      const a = (i / n) * Math.PI * 2;
+      b.live = true;
+      b.dying = 0;
+      b.x = b.px = b.ox = c.x;
+      b.y = b.py = b.oy = c.y;
+      b.z = b.pz = b.oz = c.z;
+      b.target = null;
+      b.hitId = -1;
+      b.scale = 1;
+      b.width = 1;
+      b.vx = Math.sin(a) * B.speed;
+      b.vy = 1.2;
+      b.vz = Math.cos(a) * B.speed;
+      b.life = (B.maxRange / B.speed) * 1.4;
+      b.head = 0;
+      b.count = 0;
+      this.pushTrail(b);
+    }
   }
 
   /** Register a player kill: chain bookkeeping + thock. Returns the chain length. */
@@ -973,6 +1038,10 @@ export class Combat {
     b.dying = 0.12;
     this.addSplat(b.x, y, b.z, size);
     this.lassoPush(b.x, b.z);
+    if (this.player.kit.mods.wetEdge && this.deps.reveal) {
+      const W = this.deps.tuning.heroes.inker.wetEdge;
+      this.deps.reveal.addSource(b.x, b.z, W.radius, W.life);
+    }
   }
 
   private addSplat(x: number, y: number, z: number, s: number): void {
@@ -1117,7 +1186,9 @@ export function installCombat(ctx: GameContext, player: Player, energy: EnergySp
       seed,
       audio: ctx.audio,
       beat: () => ctx.beat,
+      reveal: ctx.reveal,
     },
+
     player,
     energy,
   );

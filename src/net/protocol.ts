@@ -8,8 +8,8 @@ export const PROTOCOL_VERSION = 1;
 
 export type HeroId = 'inker' | 'penciller' | 'letterer' | 'colorist';
 export const HEROES: readonly HeroId[] = ['inker', 'penciller', 'letterer', 'colorist'];
-/** Heroes selectable right now (the rest are "coming in this issue"). */
-export const PLAYABLE_HEROES: readonly HeroId[] = ['inker'];
+/** Heroes selectable in the lobby (wave 2: all four kits ship). */
+export const PLAYABLE_HEROES: readonly HeroId[] = ['inker', 'penciller', 'letterer', 'colorist'];
 
 export interface PlayerInfo {
   /** 0 = host, 1 = guest */

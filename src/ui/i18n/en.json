@@ -192,7 +192,11 @@
     "stetPrint": "STET! PRINTING STAYS",
     "meanwhile": "MEANWHILE…",
     "stet": "STET!",
-    "spread": "TWO-PAGE SPREAD!"
+    "spread": "TWO-PAGE SPREAD!",
+    "splash": "SPLASH PAGE!",
+    "layout": "LAYOUT!",
+    "sfxStorm": "SFX STORM!",
+    "fourColor": "FOUR-COLOR!"
   },
   "style": {
     "label": "Editor's mark: {grade}",

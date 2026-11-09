@@ -1,0 +1,104 @@
+{
+  "title": "Kahramanını seç",
+  "pick": "Seç",
+  "splash": "Sıçrama",
+  "splashReady": "Çift dokun!",
+  "perkTitle": "Sayfa yeteneği: birini seç",
+  "meanwhile": "BU ARADA…",
+  "name": {
+    "inker": "Mürekkepçi",
+    "penciller": "Kurşunkalemci",
+    "letterer": "Harfçi",
+    "colorist": "Renkçi"
+  },
+  "role": {
+    "inker": "Sayfayı aydınlatır. Mürekkep okları.",
+    "penciller": "Işığı yok. Çiviler ve ezer.",
+    "letterer": "Ses efekti fırlatır. Ritimde.",
+    "colorist": "Mürekkebi kalıcı yapar. Üç sprey."
+  },
+  "verb": {
+    "tap": "DOKUN",
+    "hold": "BASILI",
+    "swipe": "KAYDIR",
+    "ult": "2×DOKUN"
+  },
+  "kit": {
+    "inker": {
+      "tap": "en yakın aydınlık hayalete mürekkep oku",
+      "hold": "kristali büyüt, eskizleri bas",
+      "swipe": "atıl, arkada mürekkep izi kalsın",
+      "ult": "Sıçrama Sayfası: her yer mürekkep, delen oklar"
+    },
+    "penciller": {
+      "tap": "cetvel bir hayaleti 2,5 sn çiviler, karanlıkta bile",
+      "hold": "döngü çiz, çivili hayaletleri ez",
+      "swipe": "silgi adımıyla saldırılardan geç",
+      "ult": "Sayfa Düzeni: panel ızgarası tüm hayaletleri dondurur"
+    },
+    "letterer": {
+      "tap": "kelime fırlat; ritimde POW → KAPOW → KA-BLAMM!",
+      "hold": "balon kalkan, bırakınca: ŞŞŞT! itişi",
+      "swipe": "VUUŞ atılışı, harfler yolu aydınlatır",
+      "ult": "Efekt Fırtınası: en uzun kelimen gökten düşer"
+    },
+    "colorist": {
+      "tap": "turkuaz (yavaşlatır), somon (yakar), altın (mürekkep) püskürt",
+      "hold": "durduğun mürekkebi 10 sn renkle doldur",
+      "swipe": "kayık baskı atılışı yem bırakır",
+      "ult": "Dört Renk Baskı: renk alanları yayılır ve patlar"
+    }
+  },
+  "perk": {
+    "bleed": "Taşma",
+    "drybrush": "Kuru Fırça",
+    "chiaroscuro": "Işık-Gölge",
+    "wetEdge": "Islak Kenar",
+    "spotBlack": "Siyah Leke",
+    "india": "Çini Mürekkebi",
+    "ricochet": "Seken Cetvel",
+    "longLead": "Uzun Uç",
+    "crosshatch": "Tarama",
+    "perspective": "Perspektif",
+    "kirbyDots": "Kirby Noktaları",
+    "blueline": "Mavi Çizgi",
+    "boldFace": "Kalın Harf",
+    "italics": "İtalik",
+    "kerning": "Harf Aralığı",
+    "offBeat": "Ritim Dışı",
+    "allCaps": "Hepsi Büyük",
+    "ellipsis": "Üç Nokta…",
+    "gradient": "Geçiş",
+    "overspray": "Taşkın Sprey",
+    "trapping": "Bindirme",
+    "colorHold": "Renk Tutma",
+    "duotone": "Çift Ton",
+    "goldLeaf": "Varak"
+  },
+  "perkDesc": {
+    "bleed": "Atılış izleri 5 sn mürekkepli kalır.",
+    "drybrush": "Kristal yarı maliyet, en fazla 5,5 m ışık.",
+    "chiaroscuro": "Işığın kenarında +1 hasar.",
+    "wetEdge": "Oklar küçük mürekkep gölcükleri bırakır.",
+    "spotBlack": "Kristali bırakınca halka şeklinde oklar atar.",
+    "india": "+40 en fazla mürekkep.",
+    "ricochet": "Cetvel ikinci bir hayalete seker.",
+    "longLead": "Çiviler 4 sn sürer.",
+    "crosshatch": "Ezme +1 hasar verir.",
+    "perspective": "Döngüler çivisiz hayaletlere de vurur.",
+    "kirbyDots": "Ezilen her hayalet mürekkep geri verir.",
+    "blueline": "Kalem çizgileri daha uzun sürer: kolay döngü.",
+    "boldFace": "Her kelime +1 hasar verir.",
+    "italics": "Kelimeler daha hızlı uçar ve hayalete yönelir.",
+    "kerning": "Harfler sayfada 6 sn kalır.",
+    "offBeat": "Ritmi kaçırınca kelime boyun korunur.",
+    "allCaps": "Kelimeler KAPOW ile başlar.",
+    "ellipsis": "Kelimeler patlayan üç nokta bırakır.",
+    "gradient": "Her sprey iki renk uygular.",
+    "overspray": "Sprey yakındaki hayaletlere de sıçrar.",
+    "trapping": "Renk alanları 5 sn daha uzun sürer.",
+    "colorHold": "Boya Kovası yarı maliyet.",
+    "duotone": "Patlatmak için iki renk yeter.",
+    "goldLeaf": "Altın daha hızlı iyileştirir, iki kat mürekkep düşürür."
+  }
+}

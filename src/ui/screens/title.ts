@@ -69,6 +69,21 @@ export class TitleScreen extends Screen {
     });
   }
 
+  /**
+   * Hero select before a solo run (lazy chunk). The pick is stored (`hero`) and the game loads
+   * that kit when the run starts; Back returns to the title.
+   */
+  private openHeroes(): void {
+    const hd = this.handlers!;
+    void import('./heroes')
+      .then(({ HeroPickScreen }) => {
+        if (!this.visible) return;
+        this.hide();
+        new HeroPickScreen(this.env).show({ pick: () => hd.play(), back: () => this.show(hd) });
+      })
+      .catch(() => hd.play());
+  }
+
   hide(): void {
     this.logo?.dispose();
     this.logo = null;
@@ -99,7 +114,7 @@ export class TitleScreen extends Screen {
 
     const primary = this.btn(
       h('button', { class: 'cx-btn primary' }, frag(ICON_PLAY), h('span', null, t('title.play'))),
-      () => hd.play(),
+      () => this.openHeroes(),
     );
     const cont =
       hd.continuePage != null && hd.continue

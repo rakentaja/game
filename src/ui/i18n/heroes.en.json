@@ -1,0 +1,104 @@
+{
+  "title": "Choose your hero",
+  "pick": "Pick",
+  "splash": "Splash",
+  "splashReady": "Double-tap!",
+  "perkTitle": "Page perk: pick one",
+  "meanwhile": "MEANWHILE…",
+  "name": {
+    "inker": "The Inker",
+    "penciller": "The Penciller",
+    "letterer": "The Letterer",
+    "colorist": "The Colorist"
+  },
+  "role": {
+    "inker": "Lights the page. Ink bolts.",
+    "penciller": "No light. Pins and crushes.",
+    "letterer": "Throws sound effects. On the beat.",
+    "colorist": "Makes ink last. Three sprays."
+  },
+  "verb": {
+    "tap": "TAP",
+    "hold": "HOLD",
+    "swipe": "SWIPE",
+    "ult": "2×TAP"
+  },
+  "kit": {
+    "inker": {
+      "tap": "ink bolt at the nearest lit ghost",
+      "hold": "grow the crystal, print sketches",
+      "swipe": "dash, leaving an ink trail",
+      "ult": "Splash Page: all ink, piercing bolts"
+    },
+    "penciller": {
+      "tap": "ruler pins a ghost for 2.5 s, even in the dark",
+      "hold": "trace a loop to crush pinned ghosts",
+      "swipe": "erase-step through attacks",
+      "ult": "Layout: a panel grid freezes every ghost"
+    },
+    "letterer": {
+      "tap": "throw a word; on the beat POW → KAPOW → KA-BLAMM!",
+      "hold": "balloon shield, release: SHHH! shove",
+      "swipe": "WHOOSH dash, letters light the way",
+      "ult": "SFX Storm: your longest word falls from the sky"
+    },
+    "colorist": {
+      "tap": "spray teal (slow), salmon (burn), gold (ink)",
+      "hold": "fill the ink you stand in with colour for 10 s",
+      "swipe": "misregistration dash leaves decoys",
+      "ult": "Four-Color Process: flats spread and burst"
+    }
+  },
+  "perk": {
+    "bleed": "Bleed",
+    "drybrush": "Drybrush",
+    "chiaroscuro": "Chiaroscuro",
+    "wetEdge": "Wet Edge",
+    "spotBlack": "Spot Black",
+    "india": "India Ink",
+    "ricochet": "Ricochet Ruler",
+    "longLead": "Long Lead",
+    "crosshatch": "Crosshatch",
+    "perspective": "Perspective",
+    "kirbyDots": "Kirby Dots",
+    "blueline": "Blueline",
+    "boldFace": "Bold Face",
+    "italics": "Italics",
+    "kerning": "Kerning",
+    "offBeat": "Off-Beat",
+    "allCaps": "All Caps",
+    "ellipsis": "Ellipsis…",
+    "gradient": "Gradient",
+    "overspray": "Overspray",
+    "trapping": "Trapping",
+    "colorHold": "Color Hold",
+    "duotone": "Duotone",
+    "goldLeaf": "Gold Leaf"
+  },
+  "perkDesc": {
+    "bleed": "Dash trails stay inked for 5 s.",
+    "drybrush": "Half crystal cost, 5.5 m max light.",
+    "chiaroscuro": "+1 damage at the edge of the light.",
+    "wetEdge": "Bolts leave small ink puddles.",
+    "spotBlack": "Letting go of the crystal fires a ring of bolts.",
+    "india": "+40 max ink.",
+    "ricochet": "Rulers bounce to a second ghost.",
+    "longLead": "Pins last 4 s.",
+    "crosshatch": "Crush deals +1 damage.",
+    "perspective": "Loops also hit ghosts that aren't pinned.",
+    "kirbyDots": "Every crushed ghost refunds ink.",
+    "blueline": "Pencil lines last longer: easier loops.",
+    "boldFace": "Every word deals +1 damage.",
+    "italics": "Words fly faster and lean into ghosts.",
+    "kerning": "Letters lie on the page for 6 s.",
+    "offBeat": "Missing the beat keeps your word size.",
+    "allCaps": "Words start at KAPOW.",
+    "ellipsis": "Words leave three dots that pop.",
+    "gradient": "Each spray applies two colours.",
+    "overspray": "Sprays splash nearby ghosts.",
+    "trapping": "Flats last 5 s longer.",
+    "colorHold": "Fill Bucket costs half.",
+    "duotone": "Two colours are enough to burst.",
+    "goldLeaf": "Gold heals faster and drops double ink."
+  }
+}
