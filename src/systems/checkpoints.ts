@@ -15,7 +15,12 @@ export interface CheckpointHooks {
   groundY?: (x: number, z: number) => number;
   /** Timer source; tests inject a manual one. */
   setTimeout?: (fn: () => void, ms: number) => unknown;
+  /** Co-op: every wizard to reprint at the checkpoint (default: just `getPlayer()`). */
+  getPlayers?: () => readonly (PlayerAPI | null | undefined)[];
 }
+
+/** Co-op: side-by-side respawn offsets (m, along X) per slot. */
+const SLOT_OFFSET = [0, 1.4];
 
 /**
  * Page-start + pre-boss checkpoints. Reaching one (its trigger id fires) saves progress and emits
@@ -76,10 +81,16 @@ export class Checkpoints {
   async respawn(): Promise<void> {
     const id = this.current;
     const swap = () => {
-      const p = this.getPlayer();
-      const [x, y0, z] = this.position(id);
-      const y = this.hooks.groundY ? this.hooks.groundY(x, z) : y0;
-      p?.teleport(x, y, z, this.def.playerStart.rotY);
+      const [x0, y0, z] = this.position(id);
+      const list = this.hooks.getPlayers?.();
+      const all = list && list.length > 1 ? list : [this.getPlayer()];
+      for (let k = 0; k < all.length; k++) {
+        const p = all[k];
+        if (!p) continue;
+        const x = x0 + (SLOT_OFFSET[p.slot ?? k] ?? 0);
+        const y = this.hooks.groundY ? this.hooks.groundY(x, z) : y0;
+        p.teleport(x, y, z, this.def.playerStart.rotY);
+      }
       this.hooks.onRespawn?.(id);
       this.events.emit('player:respawn', { checkpointId: id });
       this.events.emit('checkpoint:reached', { id });

@@ -19,6 +19,7 @@ import type {
   GameContext,
   InputAPI,
   PlayerAPI,
+  PlayerSlot,
   PlayerVerb,
   RenderAPI,
   RevealAPI,
@@ -251,6 +252,15 @@ export class Player implements PlayerAPI {
   /** Extra multiplier on the crystal radius (Blot suppression writes this; reset to 1 by its owner). */
   radiusMul = 1;
   godMode = false;
+  /** Co-op (additive hooks): player slot, move-speed multiplier (downed crawl), downed flag. */
+  slot: PlayerSlot = 0;
+  speedMul = 1;
+  downed = false;
+  /**
+   * Co-op: called when a hit would take the last page. Return true to keep the wizard alive
+   * (it goes down as an "UNFINISHED" sketch instead of dying).
+   */
+  downedHook: ((p: Player) => boolean) | null = null;
   /** Surface footstep sfx (levels may switch to step_stone). */
   stepSfx: SfxId = 'step_grass';
   /** Exposed for HUD/debug. */
@@ -491,7 +501,7 @@ export class Player implements PlayerAPI {
     ev.emit('fx:shake', { intensity: 0.5, duration: 0.3 });
     this.sfx('player_hurt');
     haptics.pulse([T.haptics.hurt, 40, T.haptics.hurt * 0.5], 0);
-    if (this.pages <= 0) this.die();
+    if (this.pages <= 0 && !this.downedHook?.(this)) this.die();
   }
 
   addEnergy(amount: number): void {
@@ -696,6 +706,7 @@ export class Player implements PlayerAPI {
           : P.walkSpeed + (P.runSpeed - P.walkSpeed) * ((mag - wt) / (1 - wt));
     }
     if (this.held) target *= P.holdMoveMul;
+    target *= this.speedMul;
     if (this.castT >= 0) target *= P.castMoveMul;
 
     // ── dash (buffered so a swipe slightly early still fires)

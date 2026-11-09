@@ -212,6 +212,14 @@ export interface PlayerAPI {
   /** Cinematic animation request (victory, look_around, kneel). */
   playClip(name: string, loop?: boolean): void;
   readonly object: THREE.Object3D;
+  /** Co-op (wave 2): player slot (0 when absent). */
+  readonly slot?: PlayerSlot;
+  /** Co-op: downed ("UNFINISHED") — never targeted by enemies or the Editor. */
+  readonly downed?: boolean;
+  /** Co-op: contact tests against this player use a radius this much smaller (remote wizard). */
+  readonly contactShrink?: number;
+  /** Co-op: a replicated wizard simulated on the partner's machine. */
+  readonly remote?: boolean;
 }
 
 export interface Damageable {
@@ -427,6 +435,11 @@ export interface GameContext {
   collision: CollisionAPI;
   targets: TargetRegistry;
   player: PlayerAPI | null;
+  /**
+   * Co-op (wave 2): every wizard on the page, indexed by slot. `player` stays the local one.
+   * Absent / length 1 in solo play.
+   */
+  players?: PlayerAPI[];
   /** Beat clock; null until audio boots. */
   beat?: BeatAPI | null;
   stats: RunStats;

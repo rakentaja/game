@@ -43,6 +43,18 @@ import { parseDailyFlag } from '../world/meta/daily';
 import { installMeta, type MetaRuntime } from '../world/meta/install';
 import { NullAudio } from './NullAudio';
 
+type CoopModule = typeof import('../coop');
+type CoopSessionT = import('../coop').CoopSession;
+type CoopHostT = import('../coop').CoopHost;
+let coopModule: Promise<CoopModule> | null = null;
+/** Co-op runtime (local 2P + online) is a lazy chunk: solo players never download it. */
+function loadCoop(): Promise<CoopModule> {
+  coopModule ??= import('../coop');
+  return coopModule;
+}
+const LOCAL2P =
+  typeof location !== 'undefined' && new URLSearchParams(location.search).get('local2p') === '1';
+
 /** Forwards to whichever level collision is current, so systems can keep one reference. */
 class CollisionProxy implements CollisionAPI {
   target: CollisionAPI | null = null;
@@ -126,6 +138,11 @@ export class Game {
   private bossStartArmed = false;
   private readonly bossFocus = new THREE.Vector3();
   private readonly listenerFwd = new THREE.Vector3();
+  /** Co-op session (local 2P or online); null in solo play. */
+  private coop: CoopSessionT | null = null;
+  private coopStarting = false;
+  private readonly coopFocus = new THREE.Vector3();
+  private lastFrameAt = 0;
 
   constructor(canvas: HTMLCanvasElement) {
     const reveal = new RevealSystem();
@@ -241,6 +258,12 @@ export class Game {
     });
     this.wireEvents();
     this.player.object.visible = false;
+    if (LOCAL2P) this.coop = await (await loadCoop()).startLocal2p(this.coopHost());
+    // an invite link may land while the host is already mid-issue: watch the lobby for a resume
+    if (typeof location !== 'undefined' && new URLSearchParams(location.search).get('room'))
+      void Promise.all([loadCoop(), import('../net')]).then(([m, n]) =>
+        m.watchResume(this.ctx.events, () => this.coop !== null || this.coopStarting, n),
+      );
 
     document.documentElement.dataset.ready = '1';
     await this.ui.finishLoading({ waitForTap: !(FLAGS.skipIntro || FLAGS.page) });
@@ -248,13 +271,16 @@ export class Game {
     const start = FLAGS.page ? (FLAGS.page === 'boss' ? 'boss' : (Number(FLAGS.page) as PageId)) : null;
     const daily = parseDailyFlag(FLAGS.daily);
     if (daily) await this.newRun(start ?? 1, undefined, daily);
-    else if (start || FLAGS.skipIntro) await this.newRun(start ?? 1);
+    // ?autoplay=1 with a co-op room (?room=CODE or ?coop=host) goes through the lobby (e2e)
+    else if ((start || FLAGS.skipIntro) && !/[?&](room|coop)=/.test(location.search))
+      await this.newRun(start ?? 1);
     else await this.toTitle();
   }
 
   // ───────────────────────────── flow ─────────────────────────────
 
   private async toTitle(): Promise<void> {
+    if (this.coop && this.coop.kind !== 'local') this.endNetCoop();
     this.mode = 'title';
     this.setPaused(false);
     this.ui.hideHud();
@@ -292,6 +318,7 @@ export class Game {
   }
 
   private async startPage(page: PageId, checkpoint?: string): Promise<void> {
+    this.coop?.onPageTeardown();
     this.teardownPage();
     this.page = page;
     const def = this.meta.levelFor(page);
@@ -308,6 +335,7 @@ export class Game {
     if (page === 'boss') this.setupBoss(def.anchors?.boss, await loadBoss());
     else if (page === 3) void loadBoss();
     this.ctx.events.emit('state:change', { from: 'boot', to: page === 'boss' ? 'boss' : 'playing' });
+    this.coop?.onPageStart(page);
     if (FLAGS.autoplay) {
       this.bot = installAutoplay(
         this.ctx,
@@ -324,6 +352,7 @@ export class Game {
         (await bossModule).attachEditorBot(this.bot, this.editor, this.ctx, this.rig);
     }
     this.ui.showHud();
+    this.coop?.setHudVisible(true);
     this.margin?.setVisible(true);
     this.meta.attachPage(page);
     void this.ui.titleCard(page);
@@ -355,16 +384,75 @@ export class Game {
 
   private async nextPageTurn(): Promise<void> {
     if (this.mode !== 'playing' || this.page === null) return;
+    // co-op: the host schedules the turn for both machines (only when BOTH wizards are at the exit)
+    if (this.coop?.handlePageComplete(this.page)) return;
     const next = nextPage(this.page);
     if (next === null) return;
+    await this.turnTo(next);
+  }
+
+  private async turnTo(next: PageId): Promise<void> {
+    if (this.mode !== 'playing') return;
     this.mode = 'turning';
     this.ctx.events.emit('sfx:play', { id: 'page_turn' });
     await this.render.pageTurn(() => this.startPage(next), TUNING.pageTurn.duration);
   }
 
+  // ───────────────────────────── co-op ─────────────────────────────
+
+  private coopHost(): CoopHostT {
+    return {
+      ctx: this.ctx,
+      player: this.player,
+      energy: this.energy,
+      combat: this.combat,
+      enemies: this.enemies,
+      spawner: this.spawner,
+      pickups: this.pickups,
+      rig: this.rig,
+      level: () => this.level,
+      page: () => this.page,
+      editor: () => this.editor,
+      mode: () => this.mode,
+      startRun: (page, cp) => this.newRun(page, cp),
+      startPage: (page, cp) => {
+        this.mode = 'playing';
+        return this.startPage(page, cp);
+      },
+      turnTo: (page) => this.turnTo(page),
+      session: () => this.coop,
+      setSession: (c) => {
+        this.coop = c;
+      },
+      endCoop: () => this.endNetCoop(),
+      stepSim: (dt) => this.step(dt),
+      lastFrameAt: () => this.lastFrameAt,
+    };
+  }
+
+  private async startNetCoop(e: GameEvents['coop:start']): Promise<void> {
+    if (this.coopStarting || (this.coop && this.coop.kind !== 'local')) return;
+    this.coopStarting = true;
+    try {
+      const [m, n] = await Promise.all([loadCoop(), import('../net')]);
+      await m.launchNet(this.coopHost(), e, n.activeSession());
+    } finally {
+      this.coopStarting = false;
+    }
+  }
+
+  private endNetCoop(): void {
+    const c = this.coop;
+    if (!c || c.kind === 'local') return;
+    this.coop = null;
+    c.dispose();
+    void import('../net').then((n) => n.activeSession()?.close());
+  }
+
   private async toCover(): Promise<void> {
     if (this.mode === 'cover') return;
     this.mode = 'cover';
+    this.coop?.setHudVisible(false);
     this.player.setControllable(false);
     this.ctx.input.setEnabled(false);
     this.ui.hideHud();
@@ -421,10 +509,17 @@ export class Game {
       save(SAVE_KEY, this.saveData);
     });
     ev.on('player:respawn', () => {
+      this.coop?.onRespawn?.();
       // fresh encounters after a reprint: no ghosts camping the checkpoint, fights replay from their triggers
       this.enemies.clear();
-      if (this.level && this.page !== 'boss') this.spawner.load(this.level.def);
+      if (this.level && this.page !== 'boss' && this.coop?.authority !== false)
+        this.spawner.load(this.level.def);
     });
+    // 'inkDrought' caption: InkEnergy.add ignores negative amounts, so drain explicitly
+    ev.on('caption:effect', (e) => {
+      if (e.effect === 'inkDrought') this.energy.drain(TUNING.worldMeta.captions.inkDrought);
+    });
+    ev.on('coop:start', (e) => void this.startNetCoop(e));
     ev.on('player:died', () => {
       this.ctx.stats.deaths++;
     });
@@ -451,8 +546,13 @@ export class Game {
       this.paused = e.paused;
     });
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden && this.mode === 'playing') this.setPaused(true);
+      // online co-op can't pause a shared page: keep simulating (watchdog below covers lost rAF)
+      if (document.hidden && this.mode === 'playing' && !this.netCoop) this.setPaused(true);
     });
+  }
+
+  private get netCoop(): boolean {
+    return !!this.coop && this.coop.kind !== 'local';
   }
 
   private setPaused(p: boolean): void {
@@ -463,39 +563,49 @@ export class Game {
   // ───────────────────────────── loop ─────────────────────────────
 
   private step(dt: number): void {
-    if (this.mode === 'boot' || this.paused) return;
+    // an online page never pauses (the pause menu still opens; the shared world keeps going)
+    if (this.mode === 'boot' || (this.paused && !this.netCoop)) return;
     const ctx = this.ctx;
+    const coop = this.coop;
     // installAutoplay patches input.poll() to drive the bot; driving it again here cleared its
     // edge-triggered presses (no bolt ever fired under ?autoplay=1).
     ctx.input.poll();
     this.player.step(dt);
+    coop?.stepPlayers(dt);
     this.combat.step(dt);
+    coop?.stepCombat(dt);
     this.style.step(dt);
-    this.pickups.step(dt, this.player, (n) => this.energy.add(n));
+    if (coop) coop.stepPickups(dt);
+    else this.pickups.step(dt, this.player, (n) => this.energy.add(n));
     this.spawner.step(dt);
+    coop?.preWorld(dt);
     this.enemies.step(dt);
     this.editor?.step(dt);
     this.level?.update(dt);
     this.meta.step(dt, this.mode === 'playing');
+    coop?.postStep(dt);
     ctx.reveal.update(dt);
     if (this.mode === 'playing') ctx.stats.timeS += dt;
   }
 
   private frame(alpha: number, frameDt: number): void {
     const ctx = this.ctx;
-    this.loop.timeScale = this.paused ? 0 : ctx.time.scale;
+    this.lastFrameAt = performance.now();
+    this.loop.timeScale = this.paused && !this.netCoop ? 0 : ctx.time.scale;
     ctx.time.simTime = this.loop.simTime;
     const dt = this.paused ? 0 : frameDt;
     if (this.mode !== 'boot') {
       this.player.render(alpha, dt);
-      const target = this.player.renderPosition;
+      this.coop?.frame(alpha, dt);
+      const zoom2 = this.coop?.cameraFocus(this.coopFocus) ?? null;
+      const target = zoom2 !== null ? this.coopFocus : this.player.renderPosition;
       if (this.editor && this.editor.cameraWeight > 0) {
         this.bossFocus.copy(target).lerp(this.editor.focus, this.editor.cameraWeight * 0.5);
         this.rig.zoom = 1 + this.editor.cameraWeight * 0.55; // keep the 7 m Editor and the wizard in frame
         this.rig.update(frameDt, this.bossFocus, this.player.velocity);
         this.editor.applyCamera(this.render.camera, frameDt);
       } else {
-        this.rig.zoom = 1;
+        this.rig.zoom = zoom2 ?? 1;
         this.rig.update(frameDt, target, this.player.velocity);
       }
       this.player.faceCamera(this.render.camera);

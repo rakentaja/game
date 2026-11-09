@@ -323,6 +323,10 @@ export class InkRenderer implements RenderAPI {
     s.uWetPx!.value = R.wetFrontPx;
     s.uSketchAmt!.value = R.sketch;
     s.uCrystalPos!.value.copy(this.reveal.center);
+    if (s.uCrystal2) {
+      s.uCrystal2.value = this.reveal.dualActive ? 1 : 0;
+      s.uCrystalPos2!.value.copy(this.reveal.center2);
+    }
     const U = this.postMat.uniforms;
     U.uAngle!.value = R.lineScreenAngle;
     const ht = this.misprint.halftone;

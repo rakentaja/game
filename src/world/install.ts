@@ -21,6 +21,19 @@ export interface LevelRuntime {
   /** Page-3 storm (null elsewhere). */
   readonly rain: InkRain | null;
   readonly hands: readonly EditorHand[];
+  /**
+   * Co-op guest: the host owns triggers and sketch printing (they arrive as replicated events);
+   * this page only renders them. Set right after install.
+   */
+  replica: boolean;
+  /**
+   * Co-op hook (src/coop/level.ts): feeds every wizard to the triggers (page end needs both)
+   * and picks the crystal that's over an unprinted sketch. Null in solo play.
+   */
+  coop: {
+    triggers(t: Triggers): void;
+    sample(own: CrystalSample, sketches: SketchObjects, def: LevelDef): CrystalSample;
+  } | null;
   /** Teleport the player to the page start (or a saved checkpoint) and announce the page. */
   start(checkpointId?: string): void;
   /** Once per sim step, after the player moved. */
@@ -77,6 +90,7 @@ export function installLevel(
   for (const s of def.sketches) sketches.add(s);
   const wells = new InkWells(def.inkWells, ctx.events);
   const checkpoints = new Checkpoints(def, ctx.events, () => ctx.player, {
+    getPlayers: () => ctx.players ?? [],
     reprint: (swap, d) => ctx.render.pageTurn(swap, d),
     groundY: (x, z) => built.collision.groundHeight(x, z),
     onRespawn: () => {
@@ -120,6 +134,8 @@ export function installLevel(
     wells,
     rain,
     hands: hands.map((h) => h.hand),
+    replica: false,
+    coop: null,
     start(checkpointId) {
       const id = checkpointId ?? def.checkpoints[0]?.id;
       if (id) checkpoints.current = id;
@@ -130,10 +146,12 @@ export function installLevel(
     },
     update(dt) {
       const p = ctx.player;
+      triggers.enabled = !this.replica;
       if (p) {
         const pos = p.position;
-        triggers.update(pos.x, pos.y, pos.z);
-        sample.held = p.crystalHeld;
+        if (this.coop) this.coop.triggers(triggers);
+        else triggers.update(pos.x, pos.y, pos.z);
+        sample.held = p.crystalHeld && !this.replica;
         sample.x = p.crystalPos.x;
         sample.z = p.crystalPos.z;
         sample.radius = ctx.reveal.radius;
@@ -142,7 +160,7 @@ export function installLevel(
       } else {
         sample.held = false;
       }
-      sketches.update(dt, sample);
+      sketches.update(dt, this.coop && !this.replica ? this.coop.sample(sample, sketches, def) : sample);
       built.syncWells(wells.wells);
       built.update(dt, ctx.time.simTime);
       memory.update(dt);

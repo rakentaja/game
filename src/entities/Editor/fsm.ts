@@ -104,6 +104,31 @@ export interface EditorPlayer {
   z: number;
   /** Down / reprinting: never targeted, never hit. */
   down: boolean;
+  /** Co-op (wave 2): this player's crystal tip, hold state and current reveal radius. */
+  cx?: number;
+  cy?: number;
+  cz?: number;
+  held?: boolean;
+  radius?: number;
+}
+
+/** Co-op "STET" moment (phase 3): the red pencil circles one player and erases them. */
+export class StetState {
+  active = false;
+  /** Player index being erased. */
+  target = 0;
+  /** Seconds since the circle was drawn (the final slam lands at tuning.coop.stet.eraseS). */
+  t = 0;
+  /** 0..1 erase progress (partner holding the crystal on the circle pauses it). */
+  erase = 0;
+  /** Partner's crystal is on the circle right now ("STET" stamp shows). */
+  held = false;
+  /** Both players held inside the slam window. */
+  parry = false;
+  x = 0;
+  z = 0;
+  /** Monotonic, so visuals/net can tell moments apart. */
+  serial = 0;
 }
 
 export const MAX_PLAYERS = 4;
@@ -156,6 +181,10 @@ export interface EditorSink {
   onEraseStem(stem: number, erased: boolean): void;
   /** P2: the left hand starts drawing an enemy at x,z (spawned via onSpawn after drawTime). */
   onSummonStart(kind: EnemyKind, x: number, z: number): void;
+  /** Co-op: "Two-Page Spread" gutter wall up / down (phase 2, two players). Optional. */
+  onSpread?(on: boolean): void;
+  /** Co-op: "STET" moment lifecycle (`target` = player index). Optional. */
+  onStet?(stage: 'start' | 'parry' | 'erased' | 'saved', target: number): void;
 }
 
 export class NullSink implements EditorSink {
@@ -295,6 +324,10 @@ export class EditorFSM {
   p2Gap = 0;
   readonly rewrite = new RewriteState();
   readonly summon = new SummonState();
+  /** Co-op "Two-Page Spread": phase 2 with two players splits the arena at `gutterX`. */
+  spread = false;
+  gutterX = 0;
+  readonly stet = new StetState();
   /** Bitmask of erased music stems. */
   stemsErased = 0;
   private stemCursor = 0;
@@ -412,6 +445,8 @@ export class EditorFSM {
     this.pendingDouble = false;
     this.p2Active = -1;
     this.p2Gap = 0;
+    this.setSpread(false);
+    this.stet.active = false;
     for (const a of this.attacks) {
       a.active = false;
       a.stage = 'idle';
@@ -492,6 +527,8 @@ export class EditorFSM {
   }
 
   private beginTransition(phase: BossPhase, fromIntro = false): void {
+    this.setSpread(false);
+    this.endStet(false);
     this.phase = phase;
     this.state = 'transition';
     this.t = fromIntro ? this.tuning.boss.transitionTime * 0.55 : 0; // intro already roared
@@ -627,6 +664,8 @@ export class EditorFSM {
       w.printed = false;
     }
     if (this.phase === 2) {
+      // co-op: "Two-Page Spread" — the gutter splits the arena between the two players
+      this.setSpread(this.playerTotal >= 2);
       this.p2Active = -1;
       this.p2Gap = 0.6;
       this.summon.active = false;
@@ -644,6 +683,8 @@ export class EditorFSM {
   }
 
   private beginDeath(): void {
+    this.setSpread(false);
+    this.endStet(false);
     this.releaseAll();
     for (const a of this.attacks) if (a.active) this.endAttack(a);
     for (const w of this.wps) {
@@ -668,7 +709,7 @@ export class EditorFSM {
     this.stepAttacks(dt, true);
 
     // Schedule next attack
-    const blocked = this.bowT > 0 || this.staggerT > 0;
+    const blocked = this.bowT > 0 || this.staggerT > 0 || this.stet.active;
     if (!blocked) {
       this.attackTimer -= dt;
       if (this.attackTimer <= 0 && this.freeAttack()) this.scheduleAttack();
@@ -676,7 +717,175 @@ export class EditorFSM {
 
     if (this.phase === 1) this.stepP1();
     else if (this.phase === 2) this.stepP2(dt);
-    else this.stepP3();
+    else {
+      this.stepP3();
+      this.stepStet(dt);
+    }
+  }
+
+  // ───────────── co-op moments (wave 2) ─────────────
+  private setSpread(on: boolean): void {
+    if (on) this.gutterX = this.bossX;
+    if (this.spread === on) return;
+    this.spread = on;
+    this.sink.onSpread?.(on);
+  }
+
+  /**
+   * Which side of the gutter a point is on (-1 / +1). The Spread splits the arena along the
+   * line through the Editor perpendicular to the X axis.
+   */
+  gutterSide(x: number): -1 | 1 {
+    return x < this.gutterX ? -1 : 1;
+  }
+
+  /**
+   * Is a P2 weak point being charged right now? Solo: the one crystal. Co-op: any standing
+   * player's crystal; during the Spread only ink pushed from the OTHER panel counts (the
+   * crystal must sit on the opposite side of the gutter, with a little extra reach).
+   */
+  private p2Charging(w: WeakPointState, reqR: number): boolean {
+    if (this.isCut('print')) return false;
+    const i = this.input;
+    const n = this.playerTotal;
+    if (n < 2) {
+      const dx = i.cx - w.x;
+      const dy = i.cy - w.y;
+      const dz = i.cz - w.z;
+      return i.crystalHeld && i.revealRadius >= reqR * 0.9 && dx * dx + dy * dy + dz * dz <= reqR * reqR;
+    }
+    const reach = this.spread ? reqR * this.tuning.coop.spread.crossReach : reqR;
+    const side = this.gutterSide(w.x);
+    for (let k = 0; k < n; k++) {
+      const p = i.players[k]!;
+      if (p.down || !p.held || (p.radius ?? 0) < reqR * 0.9) continue;
+      const cx = p.cx ?? p.x;
+      const cz = p.cz ?? p.z;
+      if (this.spread && this.gutterSide(cx) === side) continue;
+      const dx = cx - w.x;
+      const dy = (p.cy ?? i.cy) - w.y;
+      const dz = cz - w.z;
+      if (dx * dx + dy * dy + dz * dz <= reach * reach) return true;
+    }
+    return false;
+  }
+
+  /** P3 co-op: start a STET moment on the player the Editor is aiming at. */
+  private beginStet(): void {
+    const s = this.stet;
+    if (s.active || this.playerTotal < 2) return;
+    for (let k = 0; k < 2; k++) if (this.playerDown(k)) return;
+    s.active = true;
+    s.target = this.pickTarget();
+    s.t = 0;
+    s.erase = 0;
+    s.held = false;
+    s.parry = false;
+    s.serial++;
+    s.x = this.playerX(s.target);
+    s.z = this.playerZ(s.target);
+    this.attackTimer = Math.max(this.attackTimer, this.tuning.coop.stet.eraseS + 1);
+    this.sink.onStet?.('start', s.target);
+  }
+
+  private stepStet(dt: number): void {
+    const s = this.stet;
+    if (!s.active) return;
+    const S = this.tuning.coop.stet;
+    const i = this.input;
+    if (this.playerTotal < 2 || this.playerDown(s.target)) {
+      this.endStet(false);
+      return;
+    }
+    s.t += dt;
+    s.x = this.playerX(s.target);
+    s.z = this.playerZ(s.target);
+    const partner = i.players[1 - s.target]!;
+    const me = i.players[s.target]!;
+    const onCircle = (p: EditorPlayer) =>
+      !p.down && !!p.held && Math.hypot((p.cx ?? p.x) - s.x, (p.cz ?? p.z) - s.z) <= S.radius + 0.6;
+    s.held = onCircle(partner);
+    s.erase = s.held ? Math.max(0, s.erase - dt / S.eraseS) : Math.min(1, s.erase + dt / S.eraseS);
+    const half = S.slamWindowMs / 2000;
+    if (s.t >= S.eraseS - half && s.held && me.held) s.parry = true;
+    if (s.t < S.eraseS + half) return;
+    if (s.parry) {
+      // both inkers held their light through the slam: the eraser bounces into the Editor
+      const core = this.wps[CORE_INDEX]!;
+      if (core.alive) {
+        core.hp = Math.max(0, core.hp - S.parryDamage);
+        core.flash = 0.35;
+        const destroyed = core.hp <= 0;
+        if (destroyed) core.alive = false;
+        this.sink.onWeakpointHit(core, destroyed);
+        this.staggerT = 1.4;
+        if (destroyed) {
+          s.active = false;
+          this.sink.onStet?.('parry', s.target);
+          this.beginDeath();
+          return;
+        }
+      }
+      this.sink.onStet?.('parry', s.target);
+    } else this.sink.onStet?.(s.erase >= 1 - 1e-6 ? 'erased' : 'saved', s.target);
+    s.active = false;
+  }
+
+  private endStet(notify: boolean): void {
+    if (!this.stet.active) return;
+    this.stet.active = false;
+    if (notify) this.sink.onStet?.('saved', this.stet.target);
+  }
+
+  /**
+   * Co-op guest mirror: advance only the attacks the host started (lane geometry arrives as
+   * spawn params) so each client tests its own wizard against them. No scheduling, no phases.
+   */
+  stepPuppet(dt: number): void {
+    if (this.state === 'dormant' || this.state === 'dead') return;
+    this.t += dt;
+    for (const w of this.wps) if (w.flash > 0) w.flash = Math.max(0, w.flash - dt);
+    if (this.staggerT > 0) this.staggerT = Math.max(0, this.staggerT - dt);
+    if (this.bowT > 0) this.bowAmt = Math.min(1, this.bowAmt + dt * 2.5);
+    else this.bowAmt = Math.max(0, this.bowAmt - dt * 2.2);
+    this.stepAttacks(dt, false);
+    if (this.stet.active) this.stet.t += dt;
+  }
+
+  /** Co-op guest mirror: start attack slot `i` from the host's spawn params (`late` s already elapsed). */
+  startRemoteAttack(
+    i: number,
+    kind: AttackKind,
+    hand: Hand,
+    geo: { ax: number; az: number; bx: number; bz: number; hw: number },
+    times: { telegraph: number; travel: number; recover: number },
+    late: number,
+  ): Attack | null {
+    const a = this.attacks[i];
+    if (!a) return null;
+    if (a.active) this.endAttack(a);
+    a.kind = kind;
+    a.hand = hand;
+    a.ax = geo.ax;
+    a.az = geo.az;
+    a.bx = geo.bx;
+    a.bz = geo.bz;
+    a.hw = geo.hw;
+    a.telegraph = times.telegraph;
+    a.travel = times.travel;
+    a.recover = times.recover;
+    this.startAttack(a);
+    if (late > 0) {
+      // catch up the time the message spent on the wire (keeps the strike on the host's beat)
+      a.t = Math.min(late, Math.max(0, a.telegraph - 0.05));
+    }
+    return a;
+  }
+
+  /** Co-op guest mirror: end attack slot `i`. */
+  endRemoteAttack(i: number): void {
+    const a = this.attacks[i];
+    if (a?.active) this.endAttack(a);
   }
 
   private stepP1(): void {
@@ -752,12 +961,7 @@ export class EditorFSM {
       return;
     }
     if (!w.printed) {
-      const i = this.input;
-      const dx = i.cx - w.x;
-      const dy = i.cy - w.y;
-      const dz = i.cz - w.z;
-      const inRange = dx * dx + dy * dy + dz * dz <= reqR * reqR;
-      const charging = i.crystalHeld && i.revealRadius >= reqR * 0.9 && inRange && !this.isCut('print');
+      const charging = this.p2Charging(w, reqR);
       const before = w.print;
       if (charging) w.print = Math.min(1, w.print + dt / p2.printHold);
       else w.print = Math.max(0, w.print - dt * p2.printDecay);
@@ -1116,6 +1320,16 @@ export class EditorFSM {
     // Every `bowEvery` finished sweeps (more often once overtime) the Editor bows, panting.
     const every = this.phaseTime > p3.duration ? 1 : p3.bowEvery;
     this.sweepsDone++;
+    // co-op: every `stet.every` sweeps the red pencil circles one inker instead of a plain bow
+    if (
+      this.playerTotal >= 2 &&
+      !this.stet.active &&
+      this.sweepsDone % this.tuning.coop.stet.every === 0 &&
+      !this.anyActive()
+    ) {
+      this.beginStet();
+      return;
+    }
     if (this.sweepsDone % every === 0 && !this.anyActive()) {
       this.bowT = p3.bowTime * this.mul('windowMul');
       this.attackTimer = Math.max(this.attackTimer, 0.4);

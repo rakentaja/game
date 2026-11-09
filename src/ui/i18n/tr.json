@@ -189,7 +189,10 @@
     "stetBolt": "AYNEN KALSIN! MÜREKKEP OKU GERİ DÖNDÜ",
     "stetDash": "AYNEN KALSIN! ATILMA GERİ DÖNDÜ",
     "stetCrystal": "AYNEN KALSIN! KRİSTAL GERİ DÖNDÜ",
-    "stetPrint": "AYNEN KALSIN! BASKI GERİ DÖNDÜ"
+    "stetPrint": "AYNEN KALSIN! BASKI GERİ DÖNDÜ",
+    "meanwhile": "BU ARADA…",
+    "stet": "KALSIN!",
+    "spread": "ÇİFT SAYFA!"
   },
   "style": {
     "label": "Editör notu: {grade}",
@@ -330,6 +333,18 @@
       "penciller": "Kalemci",
       "letterer": "Harfçi",
       "colorist": "Renkçi"
+    },
+    "run": {
+      "player2": "2. Oyuncu",
+      "unfinished": "BİTMEDİ",
+      "downed": "Bitmedi — kristalini üstünde tut",
+      "waitExit": "Ortağın sayfa kenarında bekleniyor…",
+      "solo": "Ortağın ayrıldı — tek başına mürekkepliyorsun",
+      "soloShort": "Tek",
+      "dropped": "Ortağın düştü — siliniyor…",
+      "rejoined": "Ortağın geri döndü!",
+      "hostLost": "Kurucu düştü — yeniden bağlanılıyor… {s} sn",
+      "stetHint": "Kristalini kırmızı çemberin üstünde tut!"
     }
   }
 }
