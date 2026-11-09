@@ -144,4 +144,18 @@ export const LEVEL2: LevelDef = {
   mood: { keyDir: [0.45, 0.7, 0.55], shadow: 0.33 },
   music: 'explore',
   anchors: { cliff: [-3, 0, -44], gate: [-1, 2.2, -91.5], mist: [2, 2.2, -113] },
+  // the glade fight is over: the Editor's hand rubs out the inked panel the reader just made
+  editorHands: [
+    {
+      trigger: 'p2_glade_cleared',
+      path: [
+        [-14, -22.5],
+        [-9.5, -28.5],
+        [-4, -31.5],
+        [1.5, -29.5],
+      ],
+    },
+  ],
+  // the narrow trunk corridor is printed off-register: plates slip, the screen coarsens
+  misprints: [{ rect: [-3, -84, 6.5, -56], misreg: 4.5, halftone: 1.7 }],
 };

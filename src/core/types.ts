@@ -19,6 +19,8 @@ export type DamageSource = EnemyKind | 'editor' | 'eraser' | 'hazard';
 export type Difficulty = 'story' | 'normal';
 export type Lang = 'tr' | 'en';
 export type QualityLevel = 'auto' | 'low' | 'high';
+/** Ghost Inker playback: only in Daily Issues (default), every run, or never. */
+export type GhostMode = 'daily' | 'always' | 'off';
 /** Verbs the Editor can cut from the issue (boss "Rewrites"). */
 export type PlayerVerb = 'bolt' | 'dash' | 'crystal' | 'print';
 /** Narration caption effects ("AND THEN THE CRYSTAL WENT OUT"). */
@@ -311,6 +313,12 @@ export interface LevelDef {
   mood?: { keyDir?: Vec3T; shadow?: number };
   /** Named world anchors (boss spawn, cinematic camera points...). */
   anchors?: Record<string, Vec3T>;
+  /** Ambient weather (render): 'inkRain' = Ink Rain storm with lightning flashes. */
+  weather?: 'inkRain';
+  /** Misprint zones: rects where plate misregistration / halftone screen are boosted (multipliers). */
+  misprints?: { rect: [number, number, number, number]; misreg: number; halftone: number }[];
+  /** The Editor's Hand: when trigger `trigger` fires, a giant pencil hand wipes the XZ spline `path`. */
+  editorHands?: { trigger: string; path: Vec2T[] }[];
 }
 
 // ───────────────────────────── Audio ─────────────────────────────
@@ -343,6 +351,7 @@ export interface Settings {
   quality: QualityLevel;
   lang: Lang;
   difficulty: Difficulty;
+  ghost: GhostMode;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -356,6 +365,7 @@ export const DEFAULT_SETTINGS: Settings = {
   quality: 'auto',
   lang: 'en',
   difficulty: 'normal',
+  ghost: 'daily',
 };
 
 export interface SaveData {
