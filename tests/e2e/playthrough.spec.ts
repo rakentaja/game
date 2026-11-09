@@ -16,6 +16,10 @@ test('autoplay completes Issue #1', async ({ page }, info) => {
   await page.waitForFunction(() => (window as any).__game?.ctx?.player, null, { timeout: 60_000 });
   await page.evaluate(() => {
     const w = window as any;
+    // software GL on slow CI renders a few fps: let the fixed loop catch up more sim steps per
+    // frame than the shipped 5 (as boss.spec does) so the run fits the timeout. Game logic and
+    // the sim rate are unchanged; only frames are fewer.
+    w.__game.loop.maxSteps = 40;
     w.__log = [];
     const g = w.__game;
     for (const e of [

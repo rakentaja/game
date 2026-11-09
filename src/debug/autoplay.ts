@@ -452,6 +452,17 @@ export class AutoplayBot {
 
     // ── co-op: a downed partner gets reprinted (hold the crystal on it)
     const mate = this.deps.partner?.() ?? null;
+    // co-op: never lag far behind the partner on a side errand (the page edge leashes them,
+    // so a bot stuck on a detour would hold both wizards up)
+    if (mate && !mate.downed && !bossLive && !this.done) {
+      const dx = mate.position.x - px;
+      const dz = mate.position.z - pz;
+      if (dx * dx + dz * dz > 18 * 18 && mode !== 'print') {
+        mode = 'walk';
+        _dir.set(dx, 0, dz);
+        speed = 1;
+      }
+    }
     if (mate?.downed && !bossLive) {
       const dx = mate.position.x - px;
       const dz = mate.position.z - pz;
@@ -497,7 +508,7 @@ export class AutoplayBot {
         const wells = this.level.inkWells;
         if (wells)
           for (let i = 0; i < wells.length; i++)
-            if (Math.hypot(wells[i]![0] - px, wells[i]![1] - pz) < 3.5) {
+            if (Math.hypot(wells[i]![0] - px, wells[i]![1] - pz) < 6) {
               this.wellUsed[i] = this.time;
               this.wellBad[i] = this.time;
             }
