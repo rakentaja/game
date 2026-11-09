@@ -675,3 +675,29 @@ describe('Director ("The Inker\'s Deadline")', () => {
     expect((sp.director as Director).roster.has('smudge')).toBe(true);
   });
 });
+
+describe('finishable by a bolt-only bot (autoplay contract)', () => {
+  for (const difficulty of ['story', 'normal'] as const)
+    for (const kind of ['marginMan', 'redactor', 'panelWarden', 'misprint', 'cranes'] as const)
+      it(`${difficulty}: ${kind} dies to tapped bolts at revealed targets with the crystal held`, () => {
+        const { sys, reveal, player, targets } = setup(difficulty);
+        reveal.radius = 7;
+        player.crystalHeld = true;
+        const e = sys.spawn(kind, 6, 2)!;
+        let cd = 0;
+        let t = 0;
+        const limit = TUNING.difficulty[difficulty].gimmickFallback + 15;
+        while (e.alive && t < limit) {
+          sys.step(DT);
+          t += DT;
+          cd -= DT;
+          if (cd > 0) continue;
+          const tgt = targets.nearest(player.position, TUNING.bolt.maxRange);
+          if (tgt) {
+            tgt.hit(TUNING.bolt.damage, player.position);
+            cd = TUNING.bolt.cooldown + 0.05;
+          }
+        }
+        expect(e.alive).toBe(false);
+      });
+});

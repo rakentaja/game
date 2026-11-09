@@ -201,6 +201,8 @@ export const TUNING = {
       /** Shutter-click tell before each blink. */
       stepTell: 0.3,
       strikeRange: 1.7,
+      /** Seconds between strikes (× tempo). */
+      strikeCooldown: 2.4,
       windup: 0.65,
       /** Hittable window after a dash ink trail crosses it. */
       vulnerableS: 2,
@@ -225,7 +227,8 @@ export const TUNING = {
     /** Panel Warden: drops a shrinking panel border around the player; the gutter hurts. */
     wardenAi: {
       radius: 0.45,
-      keepRange: 7.5,
+      /** Inside the held-crystal radius (7) but outside the idle one (3): hold the light to see it. */
+      keepRange: 5.2,
       castRange: 11,
       windup: 0.9,
       boxSize: 6,
@@ -444,7 +447,7 @@ export const TUNING = {
       enemySpeed: 1,
       drainMul: 1,
       maxAttackers: 2,
-      gimmickFallback: 18,
+      gimmickFallback: 14,
       eliteMul: 1,
       deadline: 1,
     },

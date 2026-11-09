@@ -313,7 +313,10 @@ export function directorWorld(sys: {
   readonly deps: {
     player: { position: { x: number; z: number }; energy: number } | null;
     reveal: { isRevealed(x: number, z: number): boolean };
-    collision?: { walkable(x: number, z: number): boolean } | null;
+    collision?: {
+      walkable(x: number, z: number): boolean;
+      segmentClear(ax: number, az: number, bx: number, bz: number): boolean;
+    } | null;
   };
   spawn(kind: EnemyKind, x: number, z: number, opts?: { elite?: 'roll' }): { id: number } | null;
 }): DirectorWorld {
@@ -356,6 +359,9 @@ export function directorWorld(sys: {
     canSpawnAt(x, z) {
       const col = sys.deps.collision;
       if (col && !col.walkable(x, z)) return false;
+      // never behind a closed gate / wall: what spawns must be fightable from here
+      const p = sys.deps.player;
+      if (col && p && !col.segmentClear(p.position.x, p.position.z, x, z)) return false;
       return !sys.deps.reveal.isRevealed(x, z);
     },
     spawn(kind, x, z) {

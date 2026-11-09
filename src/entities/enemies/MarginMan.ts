@@ -25,6 +25,7 @@ export const MarginManBrain: Brain = {
     e.radius = t.marginAi.radius;
     e.hp = e.maxHp = t.marginMan.hp;
     e.vulnT = 0;
+    e.fireCd = 0;
     e.timerA = 0;
   },
 
@@ -75,7 +76,8 @@ export const MarginManBrain: Brain = {
       e.windup = 0;
       e.timerA += dt;
       const d = distToPlayer(e, w);
-      if (d <= reach && e.phase === MARGIN_WAIT && w.requestAttack(e)) {
+      e.fireCd -= dt;
+      if (d <= reach && e.fireCd <= 0 && e.phase === MARGIN_WAIT && w.requestAttack(e)) {
         const wind = a.windup * w.tempo;
         e.setState(AiState.Attack, wind);
         e.timerA = 0;
@@ -153,6 +155,7 @@ export const MarginManBrain: Brain = {
           e.stateT = 0;
           e.windup = 0;
           e.lunge = 1;
+          e.fireCd = a.strikeCooldown * w.tempo;
         }
         return;
       }

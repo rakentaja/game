@@ -167,7 +167,7 @@ vec3 craneShape(float u, float v, out float hem){
   float flap = sin(T * 11.0 + SEED * 9.0) * (1.0 - fold);
   p.y += abs(p.x) * (0.45 * flap + 0.9 * fold);
   p.y += neck * 0.18 + tail * 0.14;
-  return p;
+  return p * 0.72;
 }
 
 vec3 smudgeShape(float u, float v, out float hem){
@@ -494,6 +494,9 @@ void main(){
   if (dot(Nf, V) < 0.0) Nf = -Nf;
   vec3 Ns = normalize(vN) * (gl_FrontFacing ? 1.0 : -1.0);
   vec3 N = inkK ? Ns : normalize(mix(Ns, Nf, 0.75));
+  bool crane = kindIs(kind, 7.0);
+  // folded paper is lit from whichever side faces us
+  if (crane && dot(N, V) < 0.0) N = -N;
 
   // Partially revealed: draw only as a pencil sketch (hatching + contour), fading out.
   if (m < 0.5){
@@ -524,7 +527,7 @@ void main(){
   float pl = max(dot(N, normalize(L)), 0.0) * 1.6 / (1.0 + d2 * 0.1);
   float tone = 0.78 * ((inkK ? 0.16 : 0.34) + key + pl);
   tone *= 1.0 - smoothstep(uFogNear, uFogFar, distance(cameraPosition, vWPos));
-  if (!gl_FrontFacing && !inkK) tone *= 0.35; // dark inside the sheet
+  if (!gl_FrontFacing && !inkK && !crane) tone *= 0.35; // dark inside the sheet
   // crease lines + fibres
   float cr = abs(en3(vLocal * vec3(7.0, 5.0, 7.0) + seed * 21.0) - 0.5);
   float crease = 1.0 - smoothstep(0.0, 0.035, cr);

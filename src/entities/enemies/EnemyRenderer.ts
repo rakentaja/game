@@ -371,7 +371,7 @@ export class EnemyRenderer implements EnemyFxSink {
         s = new THREE.Sprite(mat);
         s.renderOrder = 5;
         s.frustumCulled = false;
-        s.scale.set(1.1, 0.275, 1);
+        s.scale.set(1.4, 0.35, 1);
         this.tags.push(s);
         this.root.add(s);
       }
@@ -589,8 +589,25 @@ export class EnemyRenderer implements EnemyFxSink {
     const cranes = sys.cranes;
     for (let i = 0; i < cranes.length; i++) {
       const c = cranes[i]!;
-      if (!c.alive || c.mode !== CraneMode.Fold) continue;
+      if (!c.alive) continue;
       const gy = (c.swarm?.position.y ?? 0) + 0.03;
+      // a small ground shadow sells the height
+      const sr = 0.32;
+      if (c.revealVis > 0.01)
+        this.putFx(
+          c.position.x - sr,
+          gy,
+          c.position.z,
+          2,
+          c.position.x + sr,
+          gy,
+          c.position.z,
+          sr * 1.4,
+          0,
+          c.seed,
+          c.revealVis,
+        );
+      if (c.mode !== CraneMode.Fold) continue;
       this.putFx(c.position.x, gy, c.position.z, 0, c.aimX, gy, c.aimZ, 0.16, c.fold, c.seed, 1);
     }
     const pr = sys.projectiles;
