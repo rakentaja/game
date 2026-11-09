@@ -2,9 +2,13 @@
  * AudioEngine — raw Web Audio implementation of AudioAPI.
  *
  * Graph:
- *   voices ─┬─────────────► sfxBus ──┐
- *           └► sfxVerbSend ─► reverb ─► verbReturn ─┐
- *   music  ─► pauseLP ─► duck ─► musicBus ──────────┴─► master ─► limiter ─► destination
+ *   voices ─► lightLP ─► panner ─┬─────────────► sfxBus ──┐
+ *                                └► sfxVerbSend ─► reverb ─► verbReturn ─┐
+ *   music ─► pauseLP ─► unprinted(HP ─► LP ─► dry|softclip) ─┬► freezeDry ─► duck ─► musicBus ─┤
+ *                                  crackle bed ──────────────┤  └► freeze loop (Delay ⟲ 0.97) ┘
+ *   low stems / boss_roar ─► exciter (harmonics > 180 Hz) ─► music / sfx path
+ *   bypass (fourth-wall leak) ─────────────────────────────────────────────────────────────────┤
+ *   master ─► mono-below-120 Hz ─► limiter ─► [phone audition] ─► destination
  *
  * iOS notes
  *  - The context starts "suspended" everywhere until resume() runs inside a user gesture; call
@@ -20,7 +24,11 @@
  */
 import type { Vector3 } from 'three';
 import type { AudioAPI, SfxId } from '../core/types';
-import { type BusLevels, busGains, dbToGain } from './mix';
+import { TUNING } from '../data/tuning';
+import { BeatClock, quantizeDelay, untilNext } from './beat';
+import { makeBed } from './beds';
+import { lightCutoff, PickupMelody, type RevealMix, revealMix } from './fxmath';
+import { type BusLevels, busGains, clamp01, dbToGain } from './mix';
 import { bakeKit } from './music/kit';
 import { Music } from './music/Music';
 import type { TrackName } from './music/tracks';
@@ -44,11 +52,37 @@ const MUSIC_TRIM = 0.6;
 const LISTENER_REF_M = 12;
 /** Events that count as user activation for touch (pointerdown/touchstart do NOT on iOS). */
 export const ACTIVATION_EVENTS = ['touchend', 'pointerup', 'click', 'keydown', 'mousedown'] as const;
-const PENTA = [0, 2, 4, 7, 9, 12, 14, 16, 19];
+
+/** Reveal-mask surface the light filter needs (RevealAPI subset). */
+export interface LightSource {
+  readonly center: { x: number; z: number };
+  readonly radius: number;
+}
+
+function softClipCurve(n: number, k: number): Float32Array<ArrayBuffer> {
+  const c = new Float32Array(n);
+  const norm = Math.tanh(k);
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1;
+    c[i] = Math.tanh(k * x) / norm;
+  }
+  return c;
+}
+
+/** Asymmetric curve: even + odd harmonics, so a 50 Hz kick grows audible 100–300 Hz partials. */
+function exciterCurve(n: number): Float32Array<ArrayBuffer> {
+  const c = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1;
+    c[i] = Math.tanh(2.5 * x) * 0.8 + 0.35 * x * x - 0.12;
+  }
+  return c;
+}
 
 interface Voice {
   gain: GainNode;
   panner: PannerNode | null;
+  light: BiquadFilterNode | null;
   src: AudioBufferSourceNode | null;
   id: SfxId | null;
   priority: number;
@@ -82,6 +116,16 @@ export class AudioEngine implements AudioAPI {
   /** Resolves when every SFX variant and the music kit are baked. */
   readonly ready: Promise<void>;
   readonly baked = new Map<SfxId, BakedSfx[]>();
+  /** Shared beat clock (BeatAPI) reading the music scheduler's step grid. */
+  readonly beat: BeatClock;
+  /** Music path entry (pre-unprinted) — Ledger layers that should sound "on the radio". */
+  readonly musicIn: GainNode;
+  /** Post-freeze music node (into the duck): beds and sounds that must stay clear of the freeze. */
+  readonly musicPost: GainNode;
+  /** SFX bus input (dry, no reverb send). */
+  readonly sfxIn: GainNode;
+  /** Goes straight to the master: ignores pause muffling, loop silencing and freezes. */
+  readonly bypass: GainNode;
 
   private master: GainNode;
   private limiter: DynamicsCompressorNode;
@@ -91,15 +135,34 @@ export class AudioEngine implements AudioAPI {
   private pauseLP: BiquadFilterNode;
   private reverb: ConvolverNode;
   private sfxSend: GainNode;
-  private musicIn: GainNode;
   private voices: Voice[] = [];
+  // unprinted mix
+  private upHP: BiquadFilterNode;
+  private upLP: BiquadFilterNode;
+  private upDry: GainNode;
+  private upWet: GainNode;
+  private crackle: GainNode;
+  private revealNow = 1;
+  private readonly rmix: RevealMix = { hp: 20, lp: 20000, drive: 0, crackle: 0 };
+  // freeze-frame
+  private freezeDry: GainNode;
+  private freezeIn: GainNode;
+  private freezeFb: GainNode;
+  private freezeOut: GainNode;
+  private freezeDelay: DelayNode;
+  private freezeUntil = 0;
+  // light / phone
+  private lightSrc: LightSource | null = null;
+  private sfxExciter: GainNode;
+  private auditionIn: GainNode | null = null;
+  private phoneAudition = false;
+  readonly pickup = new PickupMelody();
   private loops: LoopHandle[] = [];
   private lastPlay = new Map<SfxId, number>();
   private rr = new Map<SfxId, number>();
   private spriteBuf: AudioBuffer | null = null;
   private sprites = new Map<SfxId, SpriteEntry[]>();
   private rng = new Rng(0xa0d10);
-  private combo = { last: -10, idx: 0 };
   private levels: BusLevels = { master: 0.9, music: 0.7, sfx: 0.9 };
   private userSuspended = false;
   private unlocked = false;
@@ -138,8 +201,14 @@ export class AudioEngine implements AudioAPI {
     this.limiter.attack.value = 0.002;
     this.limiter.release.value = 0.15;
     this.master = ac.createGain();
-    this.master.connect(this.limiter);
+    // force stereo so the splitter below never sees a mono-only mix (channel 1 would be silent)
+    this.master.channelCount = 2;
+    this.master.channelCountMode = 'explicit';
+    this.master.channelInterpretation = 'speakers';
+    this.monoBass(this.master, this.limiter, TUNING.audio.phone.monoBelowHz);
     this.limiter.connect(ac.destination);
+    this.bypass = ac.createGain();
+    this.bypass.connect(this.master);
 
     this.musicBus = ac.createGain();
     this.sfxBus = ac.createGain();
@@ -172,17 +241,88 @@ export class AudioEngine implements AudioAPI {
     this.musicIn.connect(this.pauseLP);
     musicVerb.connect(musicVerbRet);
     musicVerbRet.connect(this.pauseLP);
-    this.pauseLP.connect(this.duck);
+
+    // ── Unprinted Mix: HP → LP → (dry | soft-clip) — a 1940s radio until the page is inked
+    this.upHP = ac.createBiquadFilter();
+    this.upHP.type = 'highpass';
+    this.upHP.frequency.value = 20;
+    this.upHP.Q.value = 0.6;
+    this.upLP = ac.createBiquadFilter();
+    this.upLP.type = 'lowpass';
+    this.upLP.frequency.value = 20000;
+    this.upLP.Q.value = 0.9;
+    const shaper = ac.createWaveShaper();
+    shaper.curve = softClipCurve(1024, 2.6);
+    this.upDry = ac.createGain();
+    this.upWet = ac.createGain();
+    this.upWet.gain.value = 0;
+    const upSum = ac.createGain();
+    this.pauseLP.connect(this.upHP);
+    this.upHP.connect(this.upLP);
+    this.upLP.connect(this.upDry);
+    this.upLP.connect(shaper);
+    shaper.connect(this.upWet);
+    this.upDry.connect(upSum);
+    this.upWet.connect(upSum);
+    this.crackle = ac.createGain();
+    this.crackle.gain.value = 0;
+    const crackleBP = ac.createBiquadFilter();
+    crackleBP.type = 'bandpass';
+    crackleBP.frequency.value = 2400;
+    crackleBP.Q.value = 0.5;
+    const crackleSrc = ac.createBufferSource();
+    crackleSrc.buffer = makeBed(ac, 'crackle');
+    crackleSrc.loop = true;
+    crackleSrc.connect(crackleBP);
+    crackleBP.connect(this.crackle);
+    // start only once the context runs: Chrome logs an autoplay warning for any start() before
+    const startCrackle = () => {
+      if (ac.state !== 'running') return;
+      ac.removeEventListener('statechange', startCrackle);
+      crackleSrc.start();
+    };
+    ac.addEventListener('statechange', startCrackle);
+    startCrackle();
+
+    // ── Freeze-frame: a delay loop that holds the last 8th while the dry music is muted
+    this.freezeDry = ac.createGain();
+    this.freezeIn = ac.createGain();
+    this.freezeIn.gain.value = 0;
+    this.freezeDelay = ac.createDelay(1);
+    this.freezeDelay.delayTime.value = 0.2;
+    this.freezeFb = ac.createGain();
+    this.freezeFb.gain.value = 0;
+    this.freezeOut = ac.createGain();
+    this.freezeOut.gain.value = 0;
+    upSum.connect(this.freezeDry);
+    upSum.connect(this.freezeIn);
+    this.freezeIn.connect(this.freezeDelay);
+    this.freezeDelay.connect(this.freezeFb);
+    this.freezeFb.connect(this.freezeDelay);
+    this.freezeDelay.connect(this.freezeOut);
+    this.musicPost = ac.createGain();
+    this.freezeDry.connect(this.musicPost);
+    this.freezeOut.connect(this.musicPost);
+    this.crackle.connect(this.musicPost);
+    this.musicPost.connect(this.duck);
     this.duck.connect(this.musicBus);
     this.music = new Music(ac, this.musicIn, musicVerb);
+    // phone-speaker mastering: low stems grow harmonics a phone can reproduce
+    this.music.exciter = this.makeExciter(this.musicIn);
+    this.beat = new BeatClock(ac, this.music, TUNING.audio.beatWindowMs);
+    this.beat.latencyOffsetMs = TUNING.audio.latencyOffsetMs;
 
     // ── voice pool
     const sfxIn = ac.createGain();
     sfxIn.connect(this.sfxBus);
     sfxIn.connect(this.sfxSend);
+    this.sfxIn = ac.createGain();
+    this.sfxIn.connect(this.sfxBus);
+    this.sfxExciter = this.makeExciter(this.sfxBus);
     for (let i = 0; i < SPATIAL_VOICES + FLAT_VOICES; i++) {
       const gain = ac.createGain();
       let panner: PannerNode | null = null;
+      let light: BiquadFilterNode | null = null;
       if (i < SPATIAL_VOICES) {
         panner = ac.createPanner();
         panner.panningModel = 'equalpower';
@@ -193,10 +333,16 @@ export class AudioEngine implements AudioAPI {
         panner.refDistance = LISTENER_REF_M;
         panner.maxDistance = 80;
         panner.rolloffFactor = 1;
-        gain.connect(panner);
+        // "Sound only in the light": muffled outside the crystal's radius
+        light = ac.createBiquadFilter();
+        light.type = 'lowpass';
+        light.Q.value = 0.5;
+        light.frequency.value = TUNING.audio.light.inside;
+        gain.connect(light);
+        light.connect(panner);
         panner.connect(sfxIn);
       } else gain.connect(sfxIn);
-      this.voices.push({ gain, panner, src: null, id: null, priority: 0, endsAt: 0 });
+      this.voices.push({ gain, panner, light, src: null, id: null, priority: 0, endsAt: 0 });
     }
 
     this.applyVolumes(true);
@@ -239,7 +385,7 @@ export class AudioEngine implements AudioAPI {
   }
 
   /** Allocation-free entry used by the event bridge (positions arrive as tuples). */
-  playAt(id: SfxId, x: number, y: number, z: number, volume = 1, rate = 1): void {
+  playAt(id: SfxId, x: number, y: number, z: number, volume = 1, rate = 1, delay = 0): void {
     const ac = this.ac;
     if (ac.state !== 'running' && !this.resuming) return;
     const r = SFX[id];
@@ -259,13 +405,21 @@ export class AudioEngine implements AudioAPI {
     let playRate = rate * (1 + (this.rng.next() * 2 - 1) * r.rateJitter);
     if (id === 'ink_pickup') {
       // consecutive pickups climb a pentatonic ladder — collecting a trail plays a little tune
-      this.combo.idx = now - this.combo.last < 0.7 ? Math.min(PENTA.length - 1, this.combo.idx + 1) : 0;
-      this.combo.last = now;
-      playRate *= 2 ** (PENTA[this.combo.idx]! / 12);
+      // (the Editor's phase 2 swaps the ladder for the leitmotif: see `pickup.mode`)
+      if (this.pickup.mode === 'motif') playRate = rate;
+      playRate *= 2 ** (this.pickup.next(now) / 12);
     }
 
-    if (spatial && voice.panner) this.setPannerPos(voice.panner, x, y, z, now);
-    const start = voice.src ? now + 0.012 : now;
+    const start = Math.max(voice.src ? now + 0.012 : now, now + Math.max(0, delay));
+    if (spatial && voice.panner) this.setPannerPos(voice.panner, x, y, z, start);
+    if (spatial && voice.light) {
+      const L = this.lightSrc;
+      const T = TUNING.audio.light;
+      const f = L
+        ? lightCutoff(Math.hypot(x - L.center.x, z - L.center.z), L.radius, T.feather, T.inside, T.outside)
+        : T.inside;
+      voice.light.frequency.setValueAtTime(f, start);
+    }
     if (voice.src) {
       // stolen: fast fade the old one
       voice.gain.gain.setTargetAtTime(0, now, 0.003);
@@ -297,6 +451,7 @@ export class AudioEngine implements AudioAPI {
         src.buffer = b.buffer;
         src.playbackRate.value = playRate;
         src.connect(voice.gain);
+        if (id === 'boss_roar') src.connect(this.sfxExciter);
         src.start(start);
         voice.src = src;
         voice.endsAt = start + b.buffer.duration / playRate;
@@ -309,6 +464,143 @@ export class AudioEngine implements AudioAPI {
       }
     }
     if (r.duckDb) this.duckMusic(r.duckDb, Math.min(r.dur, 2.5));
+  }
+
+  /**
+   * Play on the music grid: snaps to the next 1/`grid` note only when it is ≤ quantizeMaxMs away
+   * (so it never feels laggy), otherwise plays now. `grid` = 16 (16ths), 8, 32… Returns the delay.
+   */
+  playQuantized(id: SfxId, grid = 16, x = Number.NaN, y = 0, z = 0, volume = 1): number {
+    const d = this.quantizeWait(grid, TUNING.audio.quantizeMaxMs / 1000);
+    this.playAt(id, x, y, z, volume, 1, d);
+    return d;
+  }
+
+  /** Seconds until the next 1/`grid` line if ≤ maxS, else 0 (no track → 0). */
+  quantizeWait(grid: number, maxS: number): number {
+    const m = this.music;
+    if (!(m.sec16 > 0)) return 0;
+    return quantizeDelay(this.ac.currentTime, m.anchor, (m.sec16 * 16) / grid, maxS);
+  }
+
+  /** Seconds until the next 1/`grid` grid line (unbounded), 0 without a track. */
+  untilGrid(grid: number): number {
+    const m = this.music;
+    if (!(m.sec16 > 0)) return 0;
+    return untilNext(this.ac.currentTime, m.anchor, (m.sec16 * 16) / grid);
+  }
+
+  /** Light source for the per-voice "sound only in the light" filter (RevealAPI fits). */
+  setLight(src: LightSource | null): void {
+    this.lightSrc = src;
+  }
+
+  /** Unprinted Mix: 0 = 1940s radio (pre-ink), 1 = full fidelity (inked). */
+  setReveal(r: number, tau = 0.4): void {
+    const v = clamp01(r);
+    if (Math.abs(v - this.revealNow) < 0.005) return;
+    this.revealNow = v;
+    const m = revealMix(v, this.rmix, TUNING.audio.unprinted);
+    const now = this.ac.currentTime;
+    this.upHP.frequency.setTargetAtTime(m.hp, now, tau);
+    this.upLP.frequency.setTargetAtTime(m.lp, now, tau);
+    // the soft clip has ≈ +8 dB small-signal gain: trim the wet path so the radio is not louder
+    this.upWet.gain.setTargetAtTime(m.drive * 0.4, now, tau);
+    this.upDry.gain.setTargetAtTime(1 - m.drive * 0.8, now, tau);
+    this.crackle.gain.setTargetAtTime(m.crackle, now, tau);
+  }
+
+  get reveal(): number {
+    return this.revealNow;
+  }
+
+  /**
+   * Freeze-frame: capture the last `loopS` of music into a feedback loop, mute the dry path for
+   * `holdS`, then release. Returns the context time the freeze starts.
+   */
+  freeze(holdS: number, loopS: number): number {
+    const ac = this.ac;
+    const now = ac.currentTime;
+    const T = TUNING.audio.freeze;
+    const loop = Math.min(0.9, Math.max(0.05, loopS));
+    const t0 = now + 0.005;
+    // re-triggered while frozen: just extend the hold
+    if (now < this.freezeUntil) {
+      this.releaseFreezeAt(t0 + holdS, T.releaseS);
+      return t0;
+    }
+    const d = this.freezeDelay.delayTime;
+    d.cancelScheduledValues(now);
+    d.setValueAtTime(loop, now);
+    const fin = this.freezeIn.gain;
+    fin.cancelScheduledValues(now);
+    fin.setValueAtTime(1, now);
+    fin.setValueAtTime(0, t0 + loop);
+    const fb = this.freezeFb.gain;
+    fb.cancelScheduledValues(now);
+    fb.setValueAtTime(T.feedback, t0);
+    const out = this.freezeOut.gain;
+    out.cancelScheduledValues(now);
+    out.setValueAtTime(1, now);
+    const dry = this.freezeDry.gain;
+    dry.cancelScheduledValues(now);
+    dry.setValueAtTime(dry.value, now);
+    dry.setTargetAtTime(0, t0 + loop, 0.012);
+    this.releaseFreezeAt(t0 + Math.max(holdS, loop + 0.05), T.releaseS);
+    return t0;
+  }
+
+  private releaseFreezeAt(t: number, rel: number): void {
+    this.freezeUntil = t;
+    const fb = this.freezeFb.gain;
+    const out = this.freezeOut.gain;
+    const dry = this.freezeDry.gain;
+    fb.cancelScheduledValues(t);
+    out.cancelScheduledValues(t);
+    dry.cancelScheduledValues(t);
+    fb.setTargetAtTime(0, t, rel / 3);
+    out.setTargetAtTime(0, t, rel / 3);
+    dry.setTargetAtTime(1, t, rel / 4);
+  }
+
+  /** Dev: emulate a phone speaker (HP 380 Hz, presence bump, LP 9 kHz, mono) at the output. */
+  setPhoneAudition(on: boolean): void {
+    if (on === this.phoneAudition) return;
+    this.phoneAudition = on;
+    const ac = this.ac;
+    if (!this.auditionIn) {
+      const inp = ac.createGain();
+      inp.channelCount = 1;
+      inp.channelCountMode = 'explicit';
+      inp.channelInterpretation = 'speakers';
+      const hp = ac.createBiquadFilter();
+      hp.type = 'highpass';
+      hp.frequency.value = 380;
+      hp.Q.value = 1.1;
+      const pk = ac.createBiquadFilter();
+      pk.type = 'peaking';
+      pk.frequency.value = 2600;
+      pk.gain.value = 4;
+      const lp = ac.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 9000;
+      inp.connect(hp);
+      hp.connect(pk);
+      pk.connect(lp);
+      lp.connect(ac.destination);
+      this.auditionIn = inp;
+    }
+    if (on) {
+      this.limiter.disconnect(ac.destination);
+      this.limiter.connect(this.auditionIn);
+    } else {
+      this.limiter.disconnect(this.auditionIn);
+      this.limiter.connect(ac.destination);
+    }
+  }
+
+  get phoneSpeaker(): boolean {
+    return this.phoneAudition;
   }
 
   loop(id: SfxId, opts?: { volume?: number }): () => void {
@@ -465,6 +757,68 @@ export class AudioEngine implements AudioAPI {
   }
 
   // ───────────────────────────── internals ─────────────────────────────
+
+  /**
+   * Mono-sum below `hz` without touching the rest: subtract the low band of the side signal
+   * (L' = L − LP(S), R' = R + LP(S), S = (L − R)/2). Phase-exact, unlike a crossover.
+   */
+  private monoBass(from: AudioNode, to: AudioNode, hz: number): void {
+    const ac = this.ac;
+    const split = ac.createChannelSplitter(2);
+    const merge = ac.createChannelMerger(2);
+    from.connect(split);
+    const side = ac.createGain();
+    side.gain.value = 0.5;
+    const inv = ac.createGain();
+    inv.gain.value = -0.5;
+    split.connect(side, 0);
+    split.connect(inv, 1);
+    const lp1 = ac.createBiquadFilter();
+    lp1.type = 'lowpass';
+    lp1.frequency.value = hz;
+    const lp2 = ac.createBiquadFilter();
+    lp2.type = 'lowpass';
+    lp2.frequency.value = hz;
+    side.connect(lp1);
+    inv.connect(lp1);
+    lp1.connect(lp2);
+    const negL = ac.createGain();
+    negL.gain.value = -1;
+    lp2.connect(negL);
+    split.connect(merge, 0, 0);
+    split.connect(merge, 1, 1);
+    negL.connect(merge, 0, 0);
+    lp2.connect(merge, 0, 1);
+    merge.connect(to);
+  }
+
+  /** Harmonic exciter send: low band → shaper → keep 180 Hz–2.5 kHz → `dest`. Returns the send. */
+  private makeExciter(dest: AudioNode): GainNode {
+    const ac = this.ac;
+    const inp = ac.createGain();
+    inp.gain.value = 1.6;
+    const lp0 = ac.createBiquadFilter();
+    lp0.type = 'lowpass';
+    lp0.frequency.value = 160; // only the low end drives the shaper
+    const sh = ac.createWaveShaper();
+    sh.curve = exciterCurve(512);
+    const hp = ac.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 180;
+    hp.Q.value = 0.7;
+    const lp = ac.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 2500;
+    const out = ac.createGain();
+    out.gain.value = TUNING.audio.phone.exciter;
+    inp.connect(lp0);
+    lp0.connect(sh);
+    sh.connect(hp);
+    hp.connect(lp);
+    lp.connect(out);
+    out.connect(dest);
+    return inp;
+  }
 
   private applyVolumes(immediate: boolean): void {
     const g = busGains(this.levels);

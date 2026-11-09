@@ -7,8 +7,9 @@
  *   const disposeAudio = installAudio(ctx);
  */
 import { Vector3 } from 'three';
-import type { GameContext } from '../core/types';
+import type { GameContext, SfxId } from '../core/types';
 import { ACTIVATION_EVENTS, AudioEngine } from './AudioEngine';
+import { downbeatWait, installLedger } from './ledger';
 import type { TrackName } from './music/tracks';
 
 export interface InstallOptions {
@@ -23,7 +24,17 @@ export interface InstallOptions {
   autoUnlock?: boolean;
   /** Comic stinger on every `fx:panelCut` (rate-limited by the bank). Default true. */
   panelStinger?: boolean;
+  /** Idea Ledger behaviours (beat clock, Unprinted Mix, drummer, Editor stems…). Default true. */
+  ledger?: boolean;
 }
+
+/** Player-impact SFX snapped to the music grid (next 16th, only if ≤ quantizeMaxMs away). */
+const QUANTIZED: Partial<Record<SfxId, number>> = {
+  bolt_hit: 16,
+  ghost_die: 16,
+  dash: 16,
+  panel_stinger: 16,
+};
 
 const STATE_TRACK: Record<string, TrackName | null | undefined> = {
   title: 'title',
@@ -92,7 +103,13 @@ export function install(ctx: GameContext, opts: InstallOptions = {}): () => void
       }
       if (engine) {
         const pos = p.position;
-        engine.playAt(p.id, pos ? pos[0] : Number.NaN, pos ? pos[1] : 0, pos ? pos[2] : 0, p.volume ?? 1);
+        const x = pos ? pos[0] : Number.NaN;
+        const y = pos ? pos[1] : 0;
+        const z = pos ? pos[2] : 0;
+        const grid = QUANTIZED[p.id];
+        if (grid) engine.playQuantized(p.id, grid, x, y, z, p.volume ?? 1);
+        else if (p.id === 'sketch_done') engine.playAt(p.id, x, y, z, p.volume ?? 1, 1, downbeatWait(engine));
+        else engine.playAt(p.id, x, y, z, p.volume ?? 1);
         return;
       }
       if (p.position) {
@@ -122,7 +139,11 @@ export function install(ctx: GameContext, opts: InstallOptions = {}): () => void
     }),
   );
   if (opts.panelStinger !== false) {
-    offs.push(ev.on('fx:panelCut', () => audio.play('panel_stinger')));
+    offs.push(
+      ev.on('fx:panelCut', () =>
+        engine ? engine.playQuantized('panel_stinger') : audio.play('panel_stinger'),
+      ),
+    );
   }
 
   offs.push(
@@ -200,6 +221,8 @@ export function install(ctx: GameContext, opts: InstallOptions = {}): () => void
       },
     );
   }
+
+  if (engine && opts.ledger !== false) offs.push(installLedger(ctx, engine));
 
   // The engine listens for activation gestures itself (and keeps retrying after iOS
   // interruptions); other AudioAPI implementations get a one-shot unlock here.

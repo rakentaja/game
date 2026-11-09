@@ -365,6 +365,26 @@ export const TUNING = {
     splashLife: 0.55,
     tearLife: 1.6,
   },
+  /** Audio workstream (Idea Ledger wave 1). Times in seconds unless the name says ms. */
+  audio: {
+    /** Beat clock calibration: + when speakers lag more than the browser reports (UI may expose). */
+    latencyOffsetMs: 0,
+    /** Default BeatAPI.onBeat() window (± ms around an 8th). */
+    beatWindowMs: 90,
+    /** Quantized SFX snap to the next 16th only if it is at most this far away. */
+    quantizeMaxMs: 45,
+    /** sketch_done waits for the next bar line if it is within this, else the next beat. */
+    downbeatMaxS: 0.9,
+    unprinted: { hpLo: 320, lpLo: 3000, drive: 0.55, crackle: 0.05, proxyTauS: 45, crystalBurst: 0.3 },
+    light: { inside: 18000, outside: 700, feather: 3 },
+    freeze: { feedback: 0.97, releaseS: 0.35 },
+    riser: { voices: 4, fMin: 110, span: 4, climb: 3, gain: 0.05 },
+    drummer: { minHeat: 0.08 },
+    noir: { bed: 0.09, idleS: 8 },
+    leak: { scratchGain: 0.05, minGapS: 2.2, maxGapS: 4.5 },
+    phone: { exciter: 0.35, monoBelowHz: 120 },
+    haptics: { beat: 7, kill: [14, 40, 22], heart: [16, 110, 10], minGapMs: 90 },
+  },
 };
 
 export type Tuning = typeof TUNING;

@@ -19,7 +19,9 @@ export type KitId =
   | 'hatch'
   | 'rustle'
   | 'swell'
-  | 'pin';
+  | 'pin'
+  | 'snare'
+  | 'crash';
 
 const base = { lufs: 0, priority: 0, maxVoices: 0, minGapMs: 0, rateJitter: 0 } as const;
 
@@ -160,6 +162,34 @@ export const KIT: Record<KitId, SfxRecipe> = {
         [1.62, 0],
       ]);
       chain(n, hp, g, out);
+    },
+  },
+  /** Drummer snare (player-action hits): body thump + wire-noise tail. */
+  snare: {
+    ...base,
+    dur: 0.32,
+    variants: 3,
+    build(s) {
+      const { t, out } = s;
+      thump(s, out, t, 230, 170, 0.09, 0.6);
+      burst(s, out, t, 'bandpass', s.rng.range(3200, 4200), 0.8, 0.11, 0.7);
+      burst(s, out, t, 'highpass', 6000, 0.7, 0.05, 0.3);
+    },
+  },
+  /** Drummer crash (kill accent): bright noise with a long, darkening tail. */
+  crash: {
+    ...base,
+    dur: 1.8,
+    variants: 2,
+    build(s) {
+      const { t, out } = s;
+      const n = noise(s, 'white', t, 1.75);
+      const hp = filter(s, 'highpass', 4200, 0.6);
+      env(hp.frequency, t, 5200, [[1.6, 2600, 'exp']]);
+      const g = gain(s, 0);
+      perc(g.gain, t, 0.002, 1.3, 0.75);
+      chain(n, hp, g, out);
+      burst(s, out, t, 'bandpass', 2600, 2.5, 0.25, 0.25);
     },
   },
   /** Music-box pin pluck transient (layered under music-box notes). */

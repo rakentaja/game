@@ -262,6 +262,72 @@ export class Instruments {
     src.start(t);
   }
 
+  private rev = new Map<KitId, AudioBuffer>();
+  /**
+   * Kit sample played backwards (rewind bar). Reversed copies are made once, on first use.
+   * `alignEnd`: the reversed sample *ends* at `t` (a reversed boom lands on the bar line).
+   */
+  hitReversed(dest: AudioNode, id: KitId, t: number, vel: number, rate = 1, alignEnd = false): number {
+    let buf = this.rev.get(id);
+    if (!buf) {
+      const src = this.kit?.[id]?.[0];
+      if (!src) return 0;
+      buf = this.ac.createBuffer(src.numberOfChannels, src.length, src.sampleRate);
+      for (let ch = 0; ch < src.numberOfChannels; ch++) {
+        const a = src.getChannelData(ch);
+        const b = buf.getChannelData(ch);
+        for (let i = 0, n = a.length; i < n; i++) b[i] = a[n - 1 - i]!;
+      }
+      this.rev.set(id, buf);
+    }
+    const s = this.ac.createBufferSource();
+    s.buffer = buf;
+    s.playbackRate.value = rate;
+    const g = this.ac.createGain();
+    g.gain.value = vel;
+    s.connect(g);
+    g.connect(dest);
+    const d = buf.duration / rate;
+    s.start(alignEnd ? Math.max(this.ac.currentTime, t - d) : t);
+    return d;
+  }
+
+  /**
+   * Harmon-muted trumpet: bright wave through a nasal band-pass "mute" with delayed vibrato.
+   * Used for the newsprint-noir leitmotif quote.
+   */
+  mutedTrumpet(dest: AudioNode, t: number, m: number, dur: number, vel: number): void {
+    const ac = this.ac;
+    const o = ac.createOscillator();
+    o.setPeriodicWave(warmWave(ac, 0.8, 36));
+    o.frequency.value = midiToHz(m);
+    const vib = ac.createOscillator();
+    vib.frequency.value = 5.2;
+    const vg = ac.createGain();
+    vg.gain.setValueAtTime(0, t);
+    vg.gain.linearRampToValueAtTime(14, t + Math.min(0.5, dur * 0.7));
+    vib.connect(vg);
+    vg.connect(o.detune);
+    const bp = ac.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.Q.value = 3.2;
+    bp.frequency.setValueAtTime(900, t);
+    bp.frequency.linearRampToValueAtTime(1500, t + 0.08);
+    bp.frequency.setTargetAtTime(1150, t + 0.08, 0.2);
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vel, t + 0.035);
+    g.gain.setTargetAtTime(vel * 0.7, t + 0.035, 0.15);
+    g.gain.setTargetAtTime(0, t + dur, 0.07);
+    o.connect(bp);
+    bp.connect(g);
+    g.connect(dest);
+    o.start(t);
+    vib.start(t);
+    o.stop(t + dur + 0.5);
+    vib.stop(t + dur + 0.5);
+  }
+
   private seed = 0x51f15e;
   /** Cheap LCG — instruments only need decorrelation, not quality randomness. */
   rand(): number {

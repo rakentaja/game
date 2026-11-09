@@ -328,6 +328,68 @@ fanBtn.onclick = async () => {
 phaseRow.append(pauseBtn, fanBtn);
 root.append(stemRow, phaseRow);
 
+// ───────────────────────────── Idea Ledger
+root.append(el('h2', { textContent: 'Idea Ledger' }));
+const phoneBtn = el('button', { textContent: '📱 phone speaker audition' });
+phoneBtn.onclick = () => engine.setPhoneAudition(phoneBtn.classList.toggle('on'));
+const beatTxt = el('span', { className: 'meta', textContent: 'beat —' });
+events.on('audio:beat', (b) => {
+  beatTxt.textContent = `beat ${b.beat} · bar ${b.bar} · ${b.bpm} bpm · offset ${engine.beat.offsetMs().toFixed(0)} ms`;
+});
+const light = { center: { x: 0, z: 0 }, radius: 4 };
+engine.setLight(light);
+const revealS = slider('reveal (unprinted→inked)', 1, (v) => events.emit('reveal:progress', { t: v }));
+const lightS = slider('crystal light radius /10 m', 0.4, (v) => {
+  light.radius = v * 10;
+});
+const ledgerBtns: [string, () => void][] = [
+  ['panel cut "KRAK"', () => events.emit('fx:panelCut', { word: 'krak', focus: [0, 0, 0], reason: 'dev' })],
+  [
+    'print sketch (riser)',
+    () => {
+      let t = 0;
+      const id = `dev:${Math.random()}`;
+      const h = setInterval(() => {
+        t += 0.02;
+        events.emit('sketch:progress', { id, t: Math.min(1, t) });
+        if (t >= 1) {
+          clearInterval(h);
+          events.emit('sketch:printed', { id });
+          events.emit('sfx:play', { id: 'sketch_done' });
+        }
+      }, 50);
+    },
+  ],
+  ['dash', () => events.emit('player:dash', { from: [0, 0, 0], to: [3, 0, 0] })],
+  ['bolt hit', () => events.emit('bolt:hit', { enemyId: 1, position: [0, 0, 0], critical: false })],
+  ['kill', () => events.emit('enemy:died', { id: 1, kind: 'smudge', position: [0, 0, 0] })],
+  ['respawn (rewind)', () => events.emit('player:respawn', { checkpointId: 'dev' })],
+  ['page 1 (rain)', () => events.emit('page:start', { page: 1 })],
+  ['page 2 (press)', () => events.emit('page:start', { page: 2 })],
+  ['boss drag strike', () => events.emit('boss:attack', { kind: 'drag', stage: 'strike' })],
+  ['on-beat tick', () => events.emit('combat:onBeat', { action: 'bolt' })],
+];
+const ledgerRow = el('div', { className: 'row' }, phoneBtn);
+for (const [label, fn] of ledgerBtns) {
+  const b = el('button', { textContent: label });
+  b.onclick = async () => {
+    await engine.unlock();
+    fn();
+  };
+  ledgerRow.append(b);
+}
+const eraseRow = el(
+  'div',
+  { className: 'row' },
+  el('span', { className: 'meta', textContent: 'erase stem:' }),
+);
+for (let i = 0; i < 8; i++) {
+  const b = el('button', { textContent: String(i) });
+  b.onclick = () => events.emit('boss:eraseStem', { stem: i, erased: b.classList.toggle('on') });
+  eraseRow.append(b);
+}
+root.append(ledgerRow, el('div', { className: 'row' }, revealS, lightS, beatTxt), eraseRow);
+
 // ───────────────────────────── volumes
 root.append(el('h2', { textContent: 'Settings buses (square-law faders)' }));
 const volRow = el('div', { className: 'row' });
