@@ -7,8 +7,11 @@
  */
 import * as THREE from 'three';
 import { EventBus, type GameEvents } from '../core/events';
-import type { DamageSource, GameContext, PlayerAPI, PlayerSlot, RevealAPI } from '../core/types';
+import type { DamageSource, GameContext, HeroId, PlayerAPI, PlayerSlot, RevealAPI } from '../core/types';
 import { PAL, type Ramp } from '../data/palette';
+import { applyRemoteAction, type HeroActionEvent, type HeroHost } from '../entities/heroes/HeroKit';
+import { isHeroId } from '../entities/heroes/perks';
+import { loadKit } from '../entities/heroes/registry';
 import { type LoadedCharacter, Player } from '../entities/Player';
 import { INTERP_DEFAULTS, type InterpSample, SnapshotInterpolator } from '../net/interp';
 import { PuppetInput } from './input2';
@@ -22,6 +25,8 @@ export interface RemoteHooks {
   damage(amount: number, source: DamageSource): void;
   /** Ink for the partner (pickups / grants resolved here). */
   grant(amount: number): void;
+  /** Pages for the partner (their Colorist gold flat, resolved here). */
+  heal?(pages: number): void;
 }
 
 export class RemotePlayer implements PlayerAPI {
@@ -48,6 +53,12 @@ export class RemotePlayer implements PlayerAPI {
   private sketch = false;
   private readonly bus = new EventBus<GameEvents>();
   private readonly dummyCenter = new THREE.Vector3();
+  /** The partner's hero (lobby pick). Its kit is a lazy chunk; actions wait for it. */
+  hero: HeroId = 'inker';
+  private kitReady = true;
+  private readonly pendingActs: { ev: HeroActionEvent; world: boolean }[] = [];
+  private readonly pendingPerks: string[] = [];
+  private disposed = false;
 
   constructor(
     private readonly ctx: GameContext,
@@ -83,6 +94,14 @@ export class RemotePlayer implements PlayerAPI {
         collision: ctx.collision,
         reveal,
         render: ctx.render,
+        // the partner's hero kit plays here (puppet): it targets, draws and sounds like a local one
+        targets: ctx.targets,
+        audio: ctx.audio,
+        scene: () => ctx.render.scene,
+        shared: () => ctx.render.shared ?? null,
+        t: (k) => ctx.t(k),
+        beat: () => ctx.beat,
+        playerCount: () => ctx.players?.length ?? 2,
       },
       {
         value: 100,
@@ -94,6 +113,15 @@ export class RemotePlayer implements PlayerAPI {
     );
     this.body.godMode = true;
     this.body.slot = slot;
+    // kit side effects reach the real game (hero:print, ink drops, lures, shakes, panel cuts, sfx);
+    // the body's own player events stay on its private bus. Ink / pages go to their owner.
+    const kh = this.body.host as { -readonly [K in keyof HeroHost]: HeroHost[K] };
+    Object.defineProperty(kh, 'events', { value: ctx.events, configurable: true });
+    kh.addEnergy = (n) => {
+      if (n > 0) this.hooks?.grant(n);
+    };
+    kh.heal = (n) => this.hooks?.heal?.(n);
+    kh.spend = () => true;
     if (character) {
       this.body.setModel(character.scene, character.animations);
       captureRamps(this.body.object, tint);
@@ -137,6 +165,60 @@ export class RemotePlayer implements PlayerAPI {
   setControllable(): void {}
   playClip(name: string, loop?: boolean): void {
     this.body.playClip(name, loop);
+  }
+
+  /** Play the partner's hero (lobby pick): loads its kit chunk; actions queue meanwhile. */
+  setHero(id: string): Promise<void> {
+    const hero: HeroId = isHeroId(id) ? id : 'inker';
+    this.hero = hero;
+    if (this.body.kit.id === hero) {
+      this.body.kit.remote = true;
+      return Promise.resolve();
+    }
+    this.kitReady = false;
+    return loadKit(hero).then((make) => {
+      if (this.disposed || this.hero !== hero) return;
+      const kit = make();
+      kit.remote = true;
+      this.body.setKit(kit);
+      this.kitReady = true;
+      for (const p of this.pendingPerks.splice(0)) this.applyPerk(p);
+      for (const a of this.pendingActs.splice(0)) this.applyAction(a.ev, a.world);
+    });
+  }
+
+  /**
+   * A replicated `hero:action` of the partner: replay it on the puppet kit. `world` = this machine
+   * resolves its world effects (the host). The payload is copied (senders reuse theirs).
+   */
+  applyAction(ev: HeroActionEvent, world: boolean): void {
+    const copy: HeroActionEvent = {
+      pid: ev.pid,
+      hero: ev.hero,
+      action: ev.action,
+      data: { ...(ev.data ?? {}) },
+    };
+    if (!this.kitReady) {
+      if (this.pendingActs.length < 32) this.pendingActs.push({ ev: copy, world });
+      return;
+    }
+    applyRemoteAction(this.body.kit, copy, world);
+  }
+
+  /** The partner picked a page perk: their puppet kit plays it too. */
+  applyPerk(perk: string): void {
+    if (!this.kitReady) {
+      this.pendingPerks.push(perk);
+      return;
+    }
+    const k = this.body.kit;
+    if (!k.perks.has(perk)) k.applyPerk(perk);
+  }
+
+  /** New run: the partner's perks reset with it. */
+  resetPerks(): void {
+    this.pendingPerks.length = 0;
+    this.body.kit.resetPerks();
   }
 
   /** A replicated state arrived. `time` is in host-clock ms. */
@@ -190,6 +272,8 @@ export class RemotePlayer implements PlayerAPI {
     }
     this.body.speedMul = this.downed ? this.ctx.tuning.coop.downed.speedMul * 1.4 : 1.15;
     this.body.step(dt);
+    // remote kits are not stepped by their Player (it skips them): rulers fly, words land, flats tick
+    if (this.body.kit.remote) this.body.kit.update(dt);
     const sk = (this.state.flags & WF.downed) !== 0;
     if (sk !== this.sketch) {
       this.sketch = sk;
@@ -211,6 +295,7 @@ export class RemotePlayer implements PlayerAPI {
   }
 
   dispose(): void {
+    this.disposed = true;
     this.body.dispose();
   }
 }

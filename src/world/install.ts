@@ -169,6 +169,7 @@ export function installLevel(
       } else {
         sample.held = false;
       }
+      sketches.replica = this.replica;
       sketches.update(dt, this.coop && !this.replica ? this.coop.sample(sample, sketches, def) : sample);
       built.syncWells(wells.wells);
       built.update(dt, ctx.time.simTime);

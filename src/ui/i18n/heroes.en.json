@@ -100,5 +100,13 @@
     "colorHold": "Fill Bucket costs half.",
     "duotone": "Two colours are enough to burst.",
     "goldLeaf": "Gold heals faster and drops double ink."
+  },
+  "combo": {
+    "inkThePencils": "INKED PENCILS!",
+    "soundAndLight": "SOUND & LIGHT!",
+    "overprint": "OVERPRINT!",
+    "speedLines": "SPEED LINES!",
+    "coloringBook": "COLORING BOOK!",
+    "chromaticChorus": "CHROMATIC CHORUS!"
   }
 }

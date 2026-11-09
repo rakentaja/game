@@ -239,6 +239,8 @@ export class Game {
       crystalPos: () => this.player.crystalPos,
       inkContext: { shared: this.render.shared, reveal: ctx.reveal.uniforms },
       label: (k) => ctx.t(k),
+      // the Penciller sees unlit ghosts as faint pencil silhouettes (on his own screen only)
+      sight: () => this.player.kit.id === 'penciller' || (this.coop?.sight?.() ?? false),
     });
     this.render.scene.add(this.enemyGfx.root);
     this.spawner = new Spawner(ctx.events, this.enemies);
@@ -442,6 +444,7 @@ export class Game {
       endCoop: () => this.endNetCoop(),
       stepSim: (dt) => this.step(dt),
       lastFrameAt: () => this.lastFrameAt,
+      heroes: this.heroes,
     };
   }
 

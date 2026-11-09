@@ -102,6 +102,8 @@ export interface EnemyRendererOptions {
   inkContext?: { shared: Record<string, THREE.IUniform>; reveal: Record<string, THREE.IUniform> };
   /** i18n lookup for elite caption tags (ctx.t). English fallbacks otherwise. */
   label?: (key: string) => string;
+  /** This screen sees ghosts outside the ink as faint pencil silhouettes (the Penciller). */
+  sight?: () => boolean;
 }
 
 /**
@@ -157,6 +159,7 @@ export class EnemyRenderer implements EnemyFxSink {
   private readonly landed: Uint8Array;
   private pNext = 0;
 
+  private readonly sight: (() => boolean) | null;
   private readonly _m = new THREE.Matrix4();
   private readonly _q = new THREE.Quaternion();
   private readonly _e = new THREE.Euler();
@@ -181,6 +184,7 @@ export class EnemyRenderer implements EnemyFxSink {
       uKeyDir: { value: (opts.keyDir ?? new THREE.Vector3(-0.5, 0.75, 0.45)).clone().normalize() },
       uCrystalPos: { value: new THREE.Vector3() },
       uShadow: { value: 0.3 },
+      uSight: { value: 0 },
       uRamp0: { value: col(ramp[0]) },
       uRamp1: { value: col(ramp[1]) },
       uRamp2: { value: col(ramp[2]) },
@@ -197,6 +201,7 @@ export class EnemyRenderer implements EnemyFxSink {
       uEliteRed: { value: col(PAL.red[2]) },
     };
     this.label = opts.label ?? null;
+    this.sight = opts.sight ?? null;
     const ink = opts.inkContext;
     this.ownMask = !ink;
     if (ink) {
@@ -390,6 +395,7 @@ export class EnemyRenderer implements EnemyFxSink {
     const reveal = sys.reveal;
     const u = this.uniforms;
     u.uTime!.value = this.time;
+    u.uSight!.value = this.sight?.() ? 1 : 0;
     if (this.ownMask) {
       (u.uRevealCenter!.value as THREE.Vector3).copy(reveal.center);
       u.uRevealRadius!.value = reveal.radius;

@@ -6,6 +6,7 @@ import type * as THREE from 'three';
 import type { GameContext, PageId } from '../core/types';
 import type { Editor } from '../entities/Editor/Editor';
 import type { EnemySystem } from '../entities/enemies/EnemySystem';
+import type { HeroRuntime } from '../entities/heroes/runtime';
 import type { Player } from '../entities/Player';
 import type { Combat } from '../systems/combat';
 import type { InkEnergy, InkPickups } from '../systems/ink-energy';
@@ -42,6 +43,8 @@ export interface CoopHost {
   lastFrameAt(): number;
   /** Dispose the online session and close the network room (solo from here on). */
   endCoop(): void;
+  /** Hero runtime (perk cards); absent in headless tests. */
+  readonly heroes?: HeroRuntime;
 }
 
 /** What Game calls on the co-op runtime. */
@@ -70,5 +73,7 @@ export interface CoopSession {
   handlePageComplete(page: PageId): boolean;
   /** HUD visibility (title / cover hide it). */
   setHudVisible(v: boolean): void;
+  /** A Penciller plays on this screen (local 2P player 2): unlit ghosts drawn as silhouettes. */
+  sight?(): boolean;
   dispose(): void;
 }

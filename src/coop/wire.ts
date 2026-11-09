@@ -33,6 +33,8 @@ export interface WizState {
   /** Increments on every dash start / bolt cast (edge detection on the receiver). */
   dashSerial: number;
   castSerial: number;
+  /** Splash (ultimate) meter 0..1. */
+  splash: number;
 }
 
 export function emptyWiz(): WizState {
@@ -52,6 +54,7 @@ export function emptyWiz(): WizState {
     energy: 100,
     dashSerial: 0,
     castSerial: 0,
+    splash: 0,
   };
 }
 
@@ -68,6 +71,7 @@ export function writeWiz(w: ByteWriter, s: WizState): void {
   w.u8(Math.max(0, Math.min(255, Math.round(s.pages * 10))));
   w.u8(Math.max(0, Math.min(255, Math.round(s.energy))));
   w.u8(s.dashSerial & 255).u8(s.castSerial & 255);
+  w.u8(Math.max(0, Math.min(255, Math.round(s.splash * 255))));
 }
 
 export function readWiz(r: ByteReader, s: WizState): WizState {
@@ -86,6 +90,7 @@ export function readWiz(r: ByteReader, s: WizState): WizState {
   s.energy = r.u8();
   s.dashSerial = r.u8();
   s.castSerial = r.u8();
+  s.splash = r.u8() / 255;
   return s;
 }
 
@@ -136,7 +141,22 @@ export interface BossBlock {
   spread: boolean;
   gutterX: number;
   stet: { active: boolean; target: number; t: number; erase: number; held: boolean; x: number; z: number };
+  /** Rewrite sketch (verb index into REWRITE_VERBS, 255 none) + the P2 summon drawing. */
+  rw: {
+    verb: number;
+    cut: boolean;
+    sketch: boolean;
+    drawIn: number;
+    print: number;
+    x: number;
+    y: number;
+    z: number;
+  };
+  sm: { active: boolean; t: number; x: number; z: number; kind: number };
 }
+
+/** PlayerVerb order on the wire (boss rewrite sketch). */
+export const REWRITE_VERBS = ['bolt', 'dash', 'crystal', 'print'] as const;
 
 export const BOSS_STATES = ['dormant', 'intro', 'phase', 'transition', 'dying', 'dead'] as const;
 export const ATTACK_STAGES = ['idle', 'telegraph', 'strike', 'recover'] as const;
@@ -155,6 +175,8 @@ export function emptyBoss(): BossBlock {
     spread: false,
     gutterX: 0,
     stet: { active: false, target: 0, t: 0, erase: 0, held: false, x: 0, z: 0 },
+    rw: { verb: 255, cut: false, sketch: false, drawIn: 0, print: 0, x: 0, y: 1, z: 0 },
+    sm: { active: false, t: 0, x: 0, z: 0, kind: 0 },
   };
 }
 
@@ -184,6 +206,14 @@ function writeBoss(w: ByteWriter, b: BossBlock): void {
   w.i16(cm(b.gutterX));
   w.u16(Math.min(65535, Math.round(s.t * 1000))).u8(u8(s.erase * 255));
   w.i16(cm(s.x)).i16(cm(s.z));
+  const rw = b.rw;
+  w.u8(rw.verb).u8((rw.cut ? 1 : 0) | (rw.sketch ? 2 : 0) | (b.sm.active ? 4 : 0));
+  w.u8(u8(rw.drawIn * 255)).u8(u8(rw.print * 255));
+  w.i16(cm(rw.x)).i16(cm(rw.y)).i16(cm(rw.z));
+  w.u16(Math.min(65535, Math.round(b.sm.t * 1000)))
+    .i16(cm(b.sm.x))
+    .i16(cm(b.sm.z))
+    .u8(b.sm.kind);
 }
 
 function readBoss(r: ByteReader, b: BossBlock): void {
@@ -226,6 +256,21 @@ function readBoss(r: ByteReader, b: BossBlock): void {
   s.erase = r.u8() / 255;
   s.x = r.i16() / 100;
   s.z = r.i16() / 100;
+  const rw = b.rw;
+  rw.verb = r.u8();
+  const g = r.u8();
+  rw.cut = (g & 1) === 1;
+  rw.sketch = (g & 2) === 2;
+  b.sm.active = (g & 4) === 4;
+  rw.drawIn = r.u8() / 255;
+  rw.print = r.u8() / 255;
+  rw.x = r.i16() / 100;
+  rw.y = r.i16() / 100;
+  rw.z = r.i16() / 100;
+  b.sm.t = r.u16() / 1000;
+  b.sm.x = r.i16() / 100;
+  b.sm.z = r.i16() / 100;
+  b.sm.kind = r.u8();
 }
 
 // ───────────────────────────── messages ─────────────────────────────
@@ -261,6 +306,7 @@ export type CoopEvent =
   | { k: 'sketch'; id: string }
   | { k: 'trig'; id: string }
   | { k: 'respawn'; cp: string }
+  /** `at` = host-clock ms when both machines play it (NetCoop.leadAt). */
   | { k: 'cut'; w: string; f: [number, number, number]; r: string; at: number }
   | { k: 'turn'; page: string; at: number }
   | { k: 'save'; save: PageSave }
@@ -272,6 +318,20 @@ export type CoopEvent =
   | { k: 'dash'; ax: number; az: number; bx: number; bz: number }
   | { k: 'cast' }
   | { k: 'hero'; p: unknown }
+  | { k: 'perk'; perk: string }
+  | { k: 'heal'; n: number }
+  | {
+      k: 'combo';
+      c: string;
+      kind: string;
+      x: number;
+      z: number;
+      col?: number;
+      r?: number;
+      seg?: [number, number, number, number];
+      at: number;
+    }
+  | { k: 'sprog'; id: string; t: number }
   | { k: 'bossStart' }
   | { k: 'bossPhase'; p: number }
   | {

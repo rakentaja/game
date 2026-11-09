@@ -94,6 +94,9 @@ export interface EnemyDeps {
   victims?: () => readonly (PlayerAPI | null | undefined)[];
 }
 
+/** Concurrent decoy lures (Colorist: 3 decoys per dash). */
+const LURES = 6;
+
 /** Co-op replication hooks (src/coop sets them; null in solo). */
 export interface EnemyNetHooks {
   /** Host: a scribbler stroke was fired (replicate the spawn params; guests simulate it). */
@@ -174,6 +177,12 @@ export class EnemySystem implements EnemyOwner, CraneOwner, BrainWorld {
   private readonly supp = new Float32Array(2).fill(1);
   private curP: PlayerAPI | null = null;
   private curSlot = 0;
+  /** Decoys drawing aggro (`hero:lure`): x, z, seconds left — a fixed pool. */
+  private readonly lures = new Float32Array(LURES * 3);
+  private lureN = 0;
+  private lured = false;
+  /** Damage multiplier at a point (co-op combos: Overprint doubles damage in colour ∩ ink). */
+  damageMul: ((x: number, z: number) => number) | null = null;
 
   /** @internal */
   nextId = 1;
@@ -215,7 +224,52 @@ export class EnemySystem implements EnemyOwner, CraneOwner, BrainWorld {
         if (e.effect === 'ghostsHaste') this.hasteT = deps.tuning.coop.haste.seconds;
       }),
       ev.on('coop:players', (e) => this.setPlayerCount(e.count)),
+      ev.on('hero:lure', (e) => this.lure(e.x, e.z, e.seconds)),
     );
+  }
+
+  /** A decoy at (x, z) draws aggro for `seconds` (nearby enemies hunt it instead of a wizard). */
+  lure(x: number, z: number, seconds: number): void {
+    const L = this.lures;
+    let k = 0;
+    for (let i = 0; i < LURES; i++) {
+      if (L[i * 3 + 2]! <= 0) {
+        k = i;
+        break;
+      }
+      if (L[i * 3 + 2]! < L[k * 3 + 2]!) k = i;
+    }
+    L[k * 3] = x;
+    L[k * 3 + 1] = z;
+    L[k * 3 + 2] = seconds;
+    this.lureN = Math.max(this.lureN, k + 1);
+  }
+
+  /** Point this enemy's player snapshot at the nearest live lure closer than its wizard. */
+  private applyLure(e: Enemy): void {
+    const L = this.lures;
+    const R = this.tuning.enemies.ai.aggroRange;
+    let best = -1;
+    let bd = R * R;
+    const px = this.playerX - e.position.x;
+    const pz = this.playerZ - e.position.z;
+    if (this.hasPlayer) bd = Math.min(bd, px * px + pz * pz);
+    for (let i = 0; i < this.lureN; i++) {
+      if (L[i * 3 + 2]! <= 0) continue;
+      const dx = L[i * 3]! - e.position.x;
+      const dz = L[i * 3 + 1]! - e.position.z;
+      const d = dx * dx + dz * dz;
+      if (d < bd) {
+        bd = d;
+        best = i;
+      }
+    }
+    if (best < 0) return;
+    this.playerX = L[best * 3]!;
+    this.playerZ = L[best * 3 + 1]!;
+    this.playerVX = this.playerVZ = 0;
+    this.hasPlayer = true;
+    this.lured = true;
   }
 
   /** Co-op scaling target (2 players: ghost HP, maxActive, attacker cap), eased over coop.scale.easeS. */
@@ -461,6 +515,8 @@ export class EnemySystem implements EnemyOwner, CraneOwner, BrainWorld {
     this.aliveN = 0;
     this.projectiles.clear();
     this.dashPending = false;
+    this.lures.fill(0);
+    this.lureN = 0;
   }
 
   /** Kill every alive enemy with full death FX (debug / boss phase wipe). */
@@ -505,10 +561,24 @@ export class EnemySystem implements EnemyOwner, CraneOwner, BrainWorld {
     const dash = this.dashPending;
     this.dashPending = false;
 
+    let lures = 0;
+    for (let i = 0; i < this.lureN; i++) {
+      const k = i * 3 + 2;
+      if (this.lures[k]! > 0) {
+        this.lures[k] = Math.max(0, this.lures[k]! - dt);
+        lures++;
+      }
+    }
+    if (!lures) this.lureN = 0;
+
     const pool = this.pool;
     for (let i = 0; i < pool.length; i++) {
       const e = pool[i]!;
       if (!e.active) continue;
+      if (this.lured) {
+        this.lured = false;
+        this.setTarget(this.curSlot);
+      }
       e.stateT += dt;
       e.age += dt;
       e.hitT = Math.max(0, e.hitT - dt / ai.hitFlash);
@@ -521,6 +591,7 @@ export class EnemySystem implements EnemyOwner, CraneOwner, BrainWorld {
       }
 
       if (this.plN > 1 && this.chooseTarget) this.setTarget(this.chooseTarget(i, e, false));
+      if (lures) this.applyLure(e);
       const brain = BRAINS[e.kind];
       e.vulnT = Math.max(0, e.vulnT - dt);
       if (!e.worn && brain.vulnerable && e.age >= fallback) e.worn = true;
@@ -585,6 +656,10 @@ export class EnemySystem implements EnemyOwner, CraneOwner, BrainWorld {
       if (e.alive) this.integrate(e, dt);
     }
 
+    if (this.lured) {
+      this.lured = false;
+      this.setTarget(this.curSlot);
+    }
     const cr = d.crystals;
     const nc = cr ? Math.min(2, cr.length) : 1;
     for (let k = 0; k < nc; k++) {
@@ -915,6 +990,7 @@ export class EnemySystem implements EnemyOwner, CraneOwner, BrainWorld {
       return;
     }
     const ai = this.tuning.enemies.ai;
+    if (this.damageMul) amount *= this.damageMul(e.position.x, e.position.z);
     e.hp -= amount;
     e.hitT = 1;
     this.fx?.hit(e, from.x, from.z);

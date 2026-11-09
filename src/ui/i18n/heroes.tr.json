@@ -100,5 +100,13 @@
     "colorHold": "Boya Kovası yarı maliyet.",
     "duotone": "Patlatmak için iki renk yeter.",
     "goldLeaf": "Altın daha hızlı iyileştirir, iki kat mürekkep düşürür."
+  },
+  "combo": {
+    "inkThePencils": "MÜREKKEPLİ KALEM!",
+    "soundAndLight": "SES VE IŞIK!",
+    "overprint": "ÜST BASKI!",
+    "speedLines": "HIZ ÇİZGİLERİ!",
+    "coloringBook": "BOYAMA KİTABI!",
+    "chromaticChorus": "RENK KOROSU!"
   }
 }

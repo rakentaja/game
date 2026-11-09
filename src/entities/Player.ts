@@ -297,6 +297,8 @@ export class Player implements PlayerAPI {
   boltRing: ((n: number) => void) | null = null;
   /** What hero kits may touch (see HeroHost). */
   readonly host: HeroHost;
+  /** This machine resolves the kit's world effects (false for the online co-op guest). */
+  worldAuthority = true;
 
   readonly energyStore: {
     value: number;
@@ -423,7 +425,7 @@ export class Player implements PlayerAPI {
     this.smoke.mesh.matrixAutoUpdate = true;
 
     this.host = this.makeHost();
-    this.splash = new SplashMeter(deps.events, 0);
+    this.splash = new SplashMeter(deps.events, () => this.slot);
     this.kit = new InkerKit();
     this.kit.attach(this.host);
 
@@ -490,6 +492,9 @@ export class Player implements PlayerAPI {
       },
       get playerCount() {
         return d.playerCount?.() ?? 1;
+      },
+      get authority() {
+        return self.worldAuthority;
       },
       get energy() {
         return self.energyStore.value;
@@ -922,6 +927,7 @@ export class Player implements PlayerAPI {
       this.stepCrystal(dt, this.kit.wantsPrintLight?.(wantHold) ?? false);
     }
     if (!this.kit.remote) this.kit.update(dt);
+    this.splash.step(dt);
 
     // ── death
     if (!this.alive) {
@@ -1618,6 +1624,7 @@ export function installPlayer(
       scene: () => ctx.render.scene,
       shared: () => ctx.render.shared ?? null,
       t: (k) => ctx.t(k),
+      playerCount: () => ctx.players?.length ?? 1,
     },
     energy,
   );

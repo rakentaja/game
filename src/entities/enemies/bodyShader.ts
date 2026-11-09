@@ -403,6 +403,7 @@ uniform vec3 uRamp0, uRamp1, uRamp2, uRamp3;
 uniform vec3 uKeyDir;
 uniform vec3 uCrystalPos;
 uniform float uShadow;
+uniform float uSight;
 uniform float uTime;
 uniform float uOutline;
 uniform float uFogNear, uFogFar;
@@ -474,7 +475,14 @@ void main(){
   float hit = vB.x;
   float death = vB.y;
   float m = inkMask(vWPos.xz);
-  if (m < 0.06) discard;
+  if (m < 0.06){
+    // the Penciller's own screen: ghosts outside the ink stay faint pencil silhouettes
+    if (uSight < 0.5 || uOutline > 0.5 || death > 0.0 || kindIs(kind, 7.0)) discard;
+    float rim0 = 1.0 - abs(dot(normalize(vN), normalize(cameraPosition - vWPos)));
+    if (rim0 < 0.7 || eh(gl_FragCoord.xy + floor(uTime * 8.0)) > 0.5) discard;
+    gl_FragColor = vec4(uRamp1, 0.0);
+    return;
+  }
   bool inkK = kindIs(kind, 2.0) || kindIs(kind, 4.0);
   float paper = inkK ? 0.0 : 1.0;
   bool plate = kindIs(kind, 6.0) && vE.x < 2.5;

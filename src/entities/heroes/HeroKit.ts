@@ -57,6 +57,12 @@ export interface HeroHost {
   readonly time: number;
   /** Players in the session (1 = solo: kits enable their solo assists). */
   readonly playerCount: number;
+  /**
+   * This machine resolves world effects (damage, stun, pins, lures). False only for the online
+   * co-op GUEST's own kit: its actions are resolved by the host's puppet of it and replicated back.
+   * Reveal (ink) is per-machine, so kits add reveal sources whatever this says. Default true.
+   */
+  readonly authority?: boolean;
   beat(): BeatAPI | null;
   /** Scene node kits add their VFX to (null in headless tests). */
   scene(): THREE.Object3D | null;
@@ -223,6 +229,14 @@ export abstract class KitBase implements HeroKit {
   }
 
   abstract perform(action: HeroAction, data: HeroData, world: boolean): void;
+
+  /**
+   * `world` effects that need world authority (damage, stun, pins, lures): false on the online
+   * guest's own kit, whose `perform(…, world=true)` still runs its own-wizard effects.
+   */
+  protected resolves(world: boolean): boolean {
+    return world && this.host.authority !== false;
+  }
 
   /** Local ability: broadcast it, then run it (with world effects). */
   protected act(action: HeroAction, data: HeroData): void {

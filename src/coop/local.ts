@@ -1,17 +1,23 @@
 /**
- * `?local2p=1`: a second wizard on the same screen (keyboard IJKL/U/O/H or a second gamepad),
+ * `?local2p=1`: a second wizard on the same screen (keyboard IJKL/U/O/H/N or a second gamepad),
  * used to validate the multi-player refactors offline. Both wizards are real `Player`s with their
- * own ink, combat and crystal (RevealSystem crystal 1); the camera frames both.
+ * own ink, combat, crystal (RevealSystem crystal 1), hero kit, Splash meter and perks; the camera
+ * frames both. `?hero2=letterer` picks player 2's hero (default: the Inker). Pair combos resolve
+ * here (this machine is the world authority).
  */
 import * as THREE from 'three';
-import type { PageId, PlayerAPI } from '../core/types';
+import type { HeroId, PageId, PlayerAPI } from '../core/types';
 import { PAL } from '../data/palette';
+import { installCombos } from '../entities/heroes/combos';
+import { isHeroId } from '../entities/heroes/perks';
+import { loadKit } from '../entities/heroes/registry';
 import { type LoadedCharacter, Player } from '../entities/Player';
 import type { RevealSystem } from '../render/reveal/RevealSystem';
 import { Combat } from '../systems/combat';
 import { InkEnergy } from '../systems/ink-energy';
 import { PartnerHud } from '../ui/hud/partner';
 import { PartnerBus } from './bus';
+import { ComboEffects } from './combos';
 import { SecondInput } from './input2';
 import { levelHooks, placeOthers } from './level';
 import { captureRamps } from './look';
@@ -23,9 +29,17 @@ import type { CoopHost, CoopSession } from './types';
 
 const _mid = new THREE.Vector3();
 
-export async function startLocal2p(host: CoopHost): Promise<LocalCoop> {
-  const model = await loadWizardModel();
-  return new LocalCoop(host, model);
+/** `?hero2=` (player 2's hero in local 2P), else the Inker. */
+export function hero2Flag(search = typeof location !== 'undefined' ? location.search : ''): HeroId {
+  const v = new URLSearchParams(search).get('hero2');
+  return isHeroId(v) ? v : 'inker';
+}
+
+export async function startLocal2p(host: CoopHost, hero2: HeroId = hero2Flag()): Promise<LocalCoop> {
+  const [model, make] = await Promise.all([loadWizardModel(), loadKit(hero2)]);
+  const lc = new LocalCoop(host, model);
+  lc.p2.setKit(make());
+  return lc;
 }
 
 export class LocalCoop implements CoopSession {
@@ -43,6 +57,8 @@ export class LocalCoop implements CoopSession {
   private offs: (() => void)[] = [];
   private lastDash = 0;
   private stetWas = false;
+  /** Pair combos between the two local heroes (this machine resolves them). */
+  readonly combos: ComboEffects;
 
   constructor(
     private readonly host: CoopHost,
@@ -65,10 +81,19 @@ export class LocalCoop implements CoopSession {
         stats: ctx.stats,
         view: host.rig,
         beat: () => ctx.beat,
+        // hero kits: player 2's kit targets, draws and sounds like player 1's
+        targets: ctx.targets,
+        audio: ctx.audio,
+        scene: () => ctx.render.scene,
+        shared: () => ctx.render.shared ?? null,
+        t: (k) => ctx.t(k),
+        playerCount: () => ctx.players?.length ?? 2,
       },
       this.energy2,
     );
     this.p2.slot = 1;
+    // what player 2 can print with a non-Inker kit: the same spots as player 1
+    this.p2.printSpots = () => host.player.printSpots?.() ?? [];
     host.player.slot = 0;
     if (model) {
       this.p2.setModel(model.scene, model.animations);
@@ -118,6 +143,16 @@ export class LocalCoop implements CoopSession {
     if (typeof document !== 'undefined') {
       this.hud = new PartnerHud((k, v) => ctx.t(k, v), document.getElementById('ui-root') ?? document.body);
     }
+    this.combos = new ComboEffects(ctx, host.enemies);
+    this.offs.push(
+      installCombos(
+        ctx.events,
+        () => ctx.time.simTime,
+        (x, z) => ctx.collision.groundHeight(x, z),
+        (h) => this.combos.play(h, true),
+      ),
+    );
+    if (host.heroes) this.offs.push(host.heroes.addLocal(this.p2));
     this.offs.push(
       // which wizard dashed? the payload starts where the dasher stands
       ctx.events.on('player:dash', (e) => {
@@ -155,6 +190,11 @@ export class LocalCoop implements CoopSession {
 
   postStep(dt: number): void {
     this.rules.step(dt);
+    this.combos.step(dt);
+  }
+
+  sight(): boolean {
+    return this.p2.kit.id === 'penciller';
   }
 
   frame(alpha: number, frameDt: number): void {
@@ -163,6 +203,7 @@ export class LocalCoop implements CoopSession {
     this.p2.render(alpha, frameDt);
     this.p2.faceCamera(cam);
     this.combat2.render(alpha);
+    this.combos.frame(frameDt);
     const hud = this.hud;
     if (!hud) return;
     const stet = !!host.editor()?.fsm.stet.active;
@@ -189,6 +230,7 @@ export class LocalCoop implements CoopSession {
         downed: this.downedView(),
         strain: this.rules.strain,
         reduceMotion: host.ctx.settings.reduceMotion,
+        splash: this.p2.splash.value,
       },
       cam,
       r.clientWidth || innerWidth,
@@ -235,6 +277,7 @@ export class LocalCoop implements CoopSession {
     this.bot?.dispose();
     this.bot = null;
     this.combat2.clear();
+    this.combos.clear();
   }
 
   handlePageComplete(_page: PageId): boolean {
@@ -251,6 +294,7 @@ export class LocalCoop implements CoopSession {
     this.offs.length = 0;
     this.bot?.dispose();
     this.rules.dispose();
+    this.combos.dispose();
     this.input2.dispose();
     this.p2.dispose();
     this.combat2.object.removeFromParent();

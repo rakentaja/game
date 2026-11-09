@@ -265,7 +265,7 @@ export class PencillerKit extends KitBase {
     r.tz = tz;
     r.tid = tid;
     r.pin = pin;
-    r.world = world;
+    r.world = this.resolves(world);
     r.bounce = bounce;
     const P = this.host.tuning.heroes.penciller.ruler;
     // construction line (lingers: combos grind it)
@@ -346,7 +346,7 @@ export class PencillerKit extends KitBase {
       fx.lines.push(id, lp.px[0]!, H.position.y, lp.pz[0]!);
     }
     H.sfx('sketch_done', 0.7, 1.25, [cx, H.position.y, cz]);
-    if (!world) return;
+    if (!this.resolves(world)) return;
     // Thumbnail Crush
     let crushed = 0;
     const dmg = P.crush.damage + (this.has('crosshatch') ? P.crush.crosshatch : 0);
@@ -395,7 +395,7 @@ export class PencillerKit extends KitBase {
       }
     }
     H.sfx('panel_stinger', 1, 1.1);
-    if (!world) return;
+    if (!this.resolves(world)) return;
     inRadius(H, x, z, L.range, (t) => {
       if ((t as Ghost).kind === undefined) return;
       t.stun?.(L.freeze);

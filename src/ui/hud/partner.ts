@@ -28,6 +28,8 @@ export interface PartnerView {
   downed: DownedView[];
   strain: number;
   reduceMotion: boolean;
+  /** Partner's Splash (ultimate) meter 0..1; undefined hides the bar. */
+  splash?: number;
 }
 
 const CSS = `
@@ -39,6 +41,9 @@ const CSS = `
 .coop-pips i.on{background:var(--red-2,#b8655c)}
 .coop-ink{height:5px;border:1.5px solid var(--ink,#16100e);margin:2px 0}
 .coop-ink span{display:block;height:100%;background:var(--ink,#16100e)}
+.coop-splash{height:4px;border:1.5px solid var(--ink,#16100e);margin:2px 0}
+.coop-splash span{display:block;height:100%;background:var(--gold,#f6c35a)}
+.coop-splash.full span{background:var(--red-2,#b8655c)}
 .coop-net{font-size:10px;opacity:.8}
 .coop-status{font-size:10px;color:var(--red-1,#6e2f2c)}
 .coop-arrow{position:absolute;width:0;height:0;border-left:11px solid transparent;border-right:11px solid transparent;border-bottom:22px solid var(--teal-1,#1d3a38);margin:-11px 0 0 -11px;filter:drop-shadow(1px 1px 0 var(--paper,#efe1c9))}
@@ -58,6 +63,8 @@ export class PartnerHud {
   private pips: HTMLElement;
   private pipEls: HTMLElement[] = [];
   private inkFill: HTMLElement;
+  private splashBar: HTMLElement;
+  private splashFill: HTMLElement;
   private netEl: HTMLElement;
   private statusEl: HTMLElement;
   private arrow: HTMLElement;
@@ -66,7 +73,7 @@ export class PartnerHud {
   private bannerEl: HTMLElement;
   private bannerUntil = 0;
   private clock = 0;
-  private last = { pages: -1, ink: -1, net: '', status: '', name: '' };
+  private last = { pages: -1, ink: -1, splash: -2, net: '', status: '', name: '' };
 
   constructor(t: (k: string, vars?: Record<string, string | number>) => string, root: HTMLElement) {
     if (!styled && typeof document !== 'undefined') {
@@ -90,6 +97,9 @@ export class PartnerHud {
     this.nameEl = mk('', this.card, 'b');
     this.pips = mk('coop-pips', this.card);
     this.inkFill = mk('', mk('coop-ink', this.card), 'span');
+    this.splashBar = mk('coop-splash', this.card);
+    this.splashFill = mk('', this.splashBar, 'span');
+    this.splashBar.style.display = 'none';
     this.netEl = mk('coop-net', this.card);
     this.statusEl = mk('coop-status', this.card);
     this.arrow = mk('coop-arrow', this.el);
@@ -133,6 +143,13 @@ export class PartnerHud {
         this.pipEls.push(this.pips.appendChild(document.createElement('i')));
       while (this.pipEls.length > v.maxPages) this.pipEls.pop()!.remove();
       for (let i = 0; i < this.pipEls.length; i++) this.pipEls[i]!.className = i < pages ? 'on' : '';
+    }
+    const sp = v.splash === undefined ? -1 : Math.round(Math.min(1, Math.max(0, v.splash)) * 100);
+    if (sp !== L.splash) {
+      L.splash = sp;
+      this.splashBar.style.display = sp < 0 ? 'none' : '';
+      this.splashFill.style.width = `${Math.max(0, sp)}%`;
+      this.splashBar.classList.toggle('full', sp >= 100);
     }
     const ink = Math.round((v.ink / Math.max(1, v.inkMax)) * 100);
     if (ink !== L.ink) {

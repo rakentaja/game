@@ -36,6 +36,10 @@ export interface ComboHit {
   kind: string;
   /** Colour index (0 teal, 1 salmon, 2 gold) where it applies. */
   col?: number;
+  /** Area radius (panel / fill / overprint / burst), m. */
+  r?: number;
+  /** The line it runs along (bridge / grind / split): a → b. */
+  seg?: [number, number, number, number];
 }
 
 interface Base {
@@ -218,7 +222,13 @@ export class ComboDetector {
     for (const w of this.words) {
       if (w.pid === b.pid || w.land < now) continue; // only words still in the air
       if (segsCross(b, w, R))
-        out.push({ combo: 'soundAndLight', x: (w.ax + w.bx) / 2, z: (w.az + w.bz) / 2, kind: 'split' });
+        out.push({
+          combo: 'soundAndLight',
+          x: (w.ax + w.bx) / 2,
+          z: (w.az + w.bz) / 2,
+          kind: 'split',
+          seg: [w.ax, w.az, w.bx, w.bz],
+        });
     }
   }
 
@@ -228,7 +238,7 @@ export class ComboDetector {
     const R = TUNING.heroes.combos.wordRadius;
     for (const b of this.bolts)
       if (b.pid !== w.pid && segsCross(b, w, R))
-        out.push({ combo: 'soundAndLight', x: w.bx, z: w.bz, kind: 'split' });
+        out.push({ combo: 'soundAndLight', x: w.bx, z: w.bz, kind: 'split', seg: [w.ax, w.az, w.bx, w.bz] });
     if (!w.beat) return;
     // Chromatic Chorus: an on-beat word through a partner's flat takes its colour
     let col = -1;
@@ -261,7 +271,13 @@ export class ComboDetector {
     const dx = l.loop.cx - c.x;
     const dz = l.loop.cz - c.z;
     if (dx * dx + dz * dz > c.r * c.r) return;
-    out.push({ combo: 'inkThePencils', x: l.loop.cx, z: l.loop.cz, kind: 'panel' });
+    out.push({
+      combo: 'inkThePencils',
+      x: l.loop.cx,
+      z: l.loop.cz,
+      kind: 'panel',
+      r: Math.sqrt(Math.max(0, l.loop.area) / Math.PI),
+    });
   }
 
   /** An open pencil line mostly inside the crystal prints as a bridge / ramp. */
@@ -270,6 +286,8 @@ export class ComboDetector {
     let total = 0;
     let sx = 0;
     let sz = 0;
+    let first: Seg | null = null;
+    let lastS: Seg | null = null;
     for (const s of this.lines) {
       if (s.pid === c.pid || s.hero !== 'penciller') continue;
       total++;
@@ -279,17 +297,29 @@ export class ComboDetector {
         inside++;
         sx += mx;
         sz += mz;
+        first ??= s;
+        lastS = s;
       }
     }
-    if (total >= 2 && inside / total >= 0.5)
-      out.push({ combo: 'inkThePencils', x: sx / inside, z: sz / inside, kind: 'bridge' });
+    if (total >= 2 && inside / total >= 0.5 && first && lastS)
+      out.push({
+        combo: 'inkThePencils',
+        x: sx / inside,
+        z: sz / inside,
+        kind: 'bridge',
+        seg: [first.ax, first.az, lastS.bx, lastS.bz],
+      });
   }
 
   private overprint(c: Circle, f: Flat, bucket: boolean, out: ComboHit[]): void {
     const d = Math.hypot(f.x - c.x, f.z - c.z);
     if (d > c.r + f.r) return;
     const big = bucket && c.r >= TUNING.crystal.radiusHeld * 0.9 && d <= c.r;
-    out.push({ combo: 'overprint', x: f.x, z: f.z, kind: big ? 'freeze' : 'double', col: f.col });
+    out.push(
+      big
+        ? { combo: 'overprint', x: c.x, z: c.z, kind: 'freeze', col: f.col, r: c.r }
+        : { combo: 'overprint', x: f.x, z: f.z, kind: 'double', col: f.col, r: f.r },
+    );
   }
 
   private wordInMask(w: Word, c: Circle, out: ComboHit[]): void {
@@ -306,12 +336,25 @@ export class ComboDetector {
     const ll = Math.hypot(l.bx - l.ax, l.bz - l.az) || 1;
     const cos = ((d.bx - d.ax) * (l.bx - l.ax) + (d.bz - d.az) * (l.bz - l.az)) / (dl * ll);
     if (Math.abs(cos) < 0.8) return;
-    out.push({ combo: 'speedLines', x: (l.ax + l.bx) / 2, z: (l.az + l.bz) / 2, kind: 'grind' });
+    out.push({
+      combo: 'speedLines',
+      x: (l.ax + l.bx) / 2,
+      z: (l.az + l.bz) / 2,
+      kind: 'grind',
+      seg: [l.ax, l.az, l.bx, l.bz],
+    });
   }
 
   private coloringBook(s: Spray, l: Loop, out: ComboHit[]): void {
     if (!pointInLoop(s.x, s.z, l.loop)) return;
-    out.push({ combo: 'coloringBook', x: l.loop.cx, z: l.loop.cz, kind: 'fill', col: s.col });
+    out.push({
+      combo: 'coloringBook',
+      x: l.loop.cx,
+      z: l.loop.cz,
+      kind: 'fill',
+      col: s.col,
+      r: Math.sqrt(Math.max(0, l.loop.area) / Math.PI),
+    });
   }
 
   private expire(now: number): void {
@@ -335,15 +378,21 @@ function push<T>(list: T[], v: T, max = 24): void {
   if (list.length > max) list.shift();
 }
 
-/** Wire a detector to the bus: every completed combo becomes `hero:combo`. */
+/**
+ * Wire a detector to the bus: every completed combo becomes `hero:combo` (and goes to `onHit`,
+ * the co-op effect resolver, first).
+ */
 export function installCombos(
   events: EventBus<GameEvents>,
   clock: () => number,
   groundY: (x: number, z: number) => number = () => 0,
+  onHit?: (h: ComboHit) => void,
 ): () => void {
   const det = new ComboDetector();
   return events.on('hero:action', (e) => {
-    for (const h of det.ingest(e, clock()))
-      events.emit('hero:combo', { combo: h.combo, position: [h.x, groundY(h.x, h.z), h.z] });
+    for (const h of det.ingest(e, clock())) {
+      onHit?.(h);
+      events.emit('hero:combo', { combo: h.combo, kind: h.kind, position: [h.x, groundY(h.x, h.z), h.z] });
+    }
   });
 }

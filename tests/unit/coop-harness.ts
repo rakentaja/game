@@ -145,7 +145,18 @@ export function makeSide(sched: ManualScheduler): Side {
   };
   const energy = new InkEnergy(ev, TUNING);
   const player = new Player(
-    { events: ev, tuning: TUNING, settings: ctx.settings, input, collision: flat, reveal, render },
+    {
+      events: ev,
+      tuning: TUNING,
+      settings: ctx.settings,
+      input,
+      collision: flat,
+      reveal,
+      render,
+      targets: ctx.targets,
+      scene: () => null,
+      playerCount: () => ctx.players?.length ?? 1,
+    },
     energy,
   );
   ctx.player = player;
@@ -263,6 +274,7 @@ export interface Pair {
 
 export async function makePair(
   netsim: { rtt: number; jitter: number; loss: number; seed?: number } | null,
+  heroes: string[] = ['inker', 'inker'],
 ): Promise<Pair> {
   const sched = new ManualScheduler();
   const [a, b] = LoopbackTransport.pair('host', 'guest', sched);
@@ -300,14 +312,14 @@ export async function makePair(
     session: hs,
     slot: 0,
     seed: 1,
-    heroes: ['inker', 'inker'],
+    heroes,
     expose: false,
   });
   guest.coop = new NetCoop(guest.host, null, {
     session: gs,
     slot: 1,
     seed: 1,
-    heroes: ['inker', 'inker'],
+    heroes,
     expose: false,
   });
   for (const s of [host, guest]) s.coop!.onPageTeardown();
