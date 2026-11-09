@@ -88,6 +88,9 @@ ${NOISE_GLSL}
 uniform vec3 uRevealCenter;
 uniform float uRevealRadius, uRevealEdge, uRevealAmp, uRevealScale, uRevealTime, uRevealSeep;
 uniform float uRevealGrowth, uRevealFingers, uRevealBlank;
+// co-op: second crystal (uRevealDual > 0.5 when a partner's crystal is on the page)
+uniform vec3 uRevealCenter2;
+uniform float uRevealRadius2, uRevealDual;
 uniform sampler2D uRevealHist;
 uniform vec4 uRevealHistRect; // minX, minZ, 1/size, enabled
 uniform vec4 uRevealSources[${MAX_SOURCES_GLSL}];
@@ -108,6 +111,7 @@ float revealFbm(vec2 p) {
 float revealField(vec2 p) {
   float n = (revealFbm(p) - 0.5) * 2.0 * uRevealAmp * (1.0 + uRevealFingers * uRevealGrowth);
   float prim = (uRevealRadius - length(p - uRevealCenter.xz) - n) / uRevealEdge;
+  if (uRevealDual > 0.5) prim = max(prim, (uRevealRadius2 - length(p - uRevealCenter2.xz) - n) / uRevealEdge);
   float sec = -1.0;
   for (int i = 0; i < ${MAX_SOURCES_GLSL}; i++) {
     if (i >= uRevealSourceCount) break;

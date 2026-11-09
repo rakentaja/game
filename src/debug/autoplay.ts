@@ -81,6 +81,8 @@ export interface AutoplayDeps {
   boss?: () => BossView | null;
   /** Scribbler pencil strokes in flight (EnemySystem.projectiles). */
   projectiles?: ProjectileView;
+  /** Co-op partner: when it's downed, walk over and hold the crystal on it (reprint). */
+  partner?: () => PlayerAPI | null;
 }
 
 export interface ProjectileView {
@@ -410,6 +412,20 @@ export class AutoplayBot {
         if (p.energy > 60 && this.holdT % 8 < 1) hold = true;
       }
       if (mode === 'print') speed = _dir.lengthSq() > 0.01 ? 1 : 0;
+    }
+
+    // ── co-op: a downed partner gets reprinted (hold the crystal on it)
+    const mate = this.deps.partner?.() ?? null;
+    if (mate?.downed && !bossLive) {
+      const dx = mate.position.x - px;
+      const dz = mate.position.z - pz;
+      const d = Math.hypot(dx, dz);
+      if (d < 40) {
+        mode = 'walk';
+        _dir.set(dx, 0, dz);
+        speed = d > 1.2 ? 1 : 0;
+        hold = d < 3 && p.energy > 1;
+      }
     }
 
     // ── contact: dash out
@@ -815,14 +831,17 @@ export function installAutoplay(
   level: AutoplayLevel,
   view: AutoplayDeps['view'],
   extra: Pick<AutoplayDeps, 'boss' | 'projectiles'> = {},
+  /** Co-op: drive another local wizard (slot 1) through its own input instead of ctx.input/player. */
+  who?: { input: InputAPI; player: PlayerAPI },
 ): AutoplayBot {
   return new AutoplayBot(
     {
-      input: ctx.input,
+      input: who?.input ?? ctx.input,
       events: ctx.events,
       tuning: ctx.tuning,
       targets: ctx.targets,
-      getPlayer: () => ctx.player as (PlayerAPI & { dashCooldown01?: number }) | null,
+      getPlayer: () => (who?.player ?? ctx.player) as (PlayerAPI & { dashCooldown01?: number }) | null,
+      partner: () => ctx.players?.find((q) => q !== (who?.player ?? ctx.player)) ?? null,
       view,
       collision: ctx.collision,
       ...extra,

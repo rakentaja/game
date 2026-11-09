@@ -720,6 +720,42 @@ export const TUNING = {
     phone: { exciter: 0.35, monoBelowHz: 120 },
     haptics: { beat: 7, kill: [14, 40, 22], heart: [16, 110, 10], minGapMs: 90 },
   },
+  /** Co-op integration (wave 2): 2-player scaling, tether, downed/revive, netcode. */
+  coop: {
+    /** Soft tether: page-edge curl/vignette from `soft` m, MEANWHILE pull-in at `hard` m. */
+    tether: { soft: 22, hard: 30, pullBack: 2.5, meanwhileS: 1.1 },
+    /** Downed ("UNFINISHED"): crawl speed, partner crystal hold to reprint (inside the reveal). */
+    downed: { speedMul: 0.4, reviveHoldS: 2, reviveRange: 2.6, reviveDecay: 0.6 },
+    /** 2-player scaling targets (eased in/out over `easeS`). */
+    scale: { ghostHp: 1.6, maxActive: 12, maxAttackers: 3, easeS: 3 },
+    /** Target hysteresis: switch to the other player only if closer by this many metres. */
+    targetHysteresis: 2.5,
+    /** Dash through your partner: they get this much ink. */
+    dashThroughInk: 20,
+    dashThroughRadius: 0.9,
+    /** Enemy speed buff on the 'ghostsHaste' caption effect. */
+    haste: { mul: 1.3, seconds: 8 },
+    net: {
+      snapshotHz: 20,
+      playerStateHz: 30,
+      /** Max enemies per snapshot (nearest first). */
+      maxEnemies: 12,
+      /** Host per-tick reveal/alive history for guest hit validation (ms). */
+      historyMs: 250,
+      /** Shared cuts / page turns are scheduled this many host ticks ahead. */
+      leadTicks: 6,
+      /** Ghost contact vs the remote wizard uses a radius this much smaller (favor the victim). */
+      contactShrink: 0.1,
+      /** Partner fades out over this long after a drop; the seat is held for `rejoinS`. */
+      fadeS: 10,
+      rejoinS: 60,
+      /** Guest waits this long for a dropped host before taking over solo. */
+      hostReconnectS: 10,
+    },
+    /** Boss co-op moments. */
+    stet: { eraseS: 6, slamWindowMs: 400, every: 3, radius: 2.2, parryDamage: 1 },
+    spread: { gutterHalfWidth: 0.6, crossReach: 1.35 },
+  },
 };
 
 export type Tuning = typeof TUNING;

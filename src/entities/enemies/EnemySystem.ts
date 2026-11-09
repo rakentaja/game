@@ -80,6 +80,26 @@ export interface EnemyDeps {
   settings?: Pick<Settings, 'difficulty'>;
   /** Shared beat clock (ctx.beat). Optional: `audio:beat` events are used when it's absent. */
   beat?: BeatAPI | null;
+  /**
+   * Co-op: every wizard by slot (targeting picks the nearest standing one, with hysteresis).
+   * Absent → `player` only.
+   */
+  getPlayers?: () => readonly (PlayerAPI | null | undefined)[];
+  /** Co-op: per-slot crystal (reveal view) — blot suppression and "larger reveal" targeting. */
+  crystals?: readonly { targetRadius: number; radius: number }[];
+  /**
+   * Co-op: players whose projectile hits are resolved by THIS simulation (favor the victim: each
+   * client tests its own wizard). Default: every player.
+   */
+  victims?: () => readonly (PlayerAPI | null | undefined)[];
+}
+
+/** Co-op replication hooks (src/coop sets them; null in solo). */
+export interface EnemyNetHooks {
+  /** Host: a scribbler stroke was fired (replicate the spawn params; guests simulate it). */
+  onFire?(ox: number, oz: number, dx: number, dz: number, life: number, seed: number): void;
+  /** Guest (puppet): a local bolt hit a replicated enemy — ask the host to apply it. */
+  onHit?(e: Enemy, amount: number, from: THREE.Vector3, craneId: number): void;
 }
 
 /** Visual hooks; the renderer implements these to spawn paper/ink particles. */
@@ -127,9 +147,38 @@ export class EnemySystem implements EnemyOwner, CraneOwner, BrainWorld {
   drainMul = 1;
   private maxAttackers = 2;
   private attackers = 0;
+  /**
+   * Guest mirror mode: no AI, no spawning decisions; positions/hp come from the host snapshot,
+   * only reveal visibility, dying FX and local projectile hits run here.
+   */
+  puppet = false;
+  /** Guest mirror step (src/coop/puppet.ts installs it). */
+  puppetStep: ((dt: number) => void) | null = null;
+  net: EnemyNetHooks | null = null;
+  /** Co-op scaling 0 (solo) .. 1 (two players), eased toward the player count. */
+  coopScale = 0;
+  private scaleTarget = 0;
+  private hpMul = 1;
+  private hasteT = 0;
+  /** @internal */
+  readonly tgt = new Uint8Array(ENEMY_POOL);
+  /** @internal co-op: this step's wizards by slot (+ count) and each enemy's target slot. */
+  readonly pl: (PlayerAPI | null)[] = [null, null];
+  plN = 0;
+  /**
+   * Co-op targeting (src/coop/puppet.ts installs it): pick the slot enemy `e` (pool index `i`)
+   * hunts this step; `fresh` on spawn.
+   */
+  chooseTarget: ((i: number, e: Enemy, fresh: boolean) => number) | null = null;
+  private readonly baseR = new Float32Array(2);
+  private readonly supp = new Float32Array(2).fill(1);
+  private curP: PlayerAPI | null = null;
+  private curSlot = 0;
 
-  private nextId = 1;
-  private aliveN = 0;
+  /** @internal */
+  nextId = 1;
+  /** @internal */
+  aliveN = 0;
   private suppress = 1;
   private readonly desired: V2 = { x: 0, z: 0 };
   private readonly push: V2 = { x: 0, z: 0 };
@@ -162,7 +211,61 @@ export class EnemySystem implements EnemyOwner, CraneOwner, BrainWorld {
       }),
       // Respawn grace: nobody attacks the instant the player is back on their feet.
       ev.on('player:respawn', () => this.calm()),
+      ev.on('caption:effect', (e) => {
+        if (e.effect === 'ghostsHaste') this.hasteT = deps.tuning.coop.haste.seconds;
+      }),
+      ev.on('coop:players', (e) => this.setPlayerCount(e.count)),
     );
+  }
+
+  /** Co-op scaling target (2 players: ghost HP, maxActive, attacker cap), eased over coop.scale.easeS. */
+  setPlayerCount(n: number, instant = false): void {
+    this.scaleTarget = n >= 2 ? 1 : 0;
+    if (instant) this.applyScale(this.scaleTarget);
+  }
+
+  /** Alive enemy cap after co-op scaling. */
+  get maxActive(): number {
+    const C = this.tuning.coop.scale;
+    const base = this.tuning.enemies.maxActive;
+    return Math.min(ENEMY_POOL - 2, Math.round(base + (C.maxActive - base) * this.coopScale));
+  }
+
+  /** Current ghost HP multiplier (1 solo, tuning.coop.scale.ghostHp with two players). */
+  get hpScale(): number {
+    return this.hpMul;
+  }
+
+  private applyScale(v: number): void {
+    this.coopScale = v;
+    const mul = 1 + (this.tuning.coop.scale.ghostHp - 1) * v;
+    const k = mul / this.hpMul;
+    this.hpMul = mul;
+    if (k === 1) return;
+    for (const e of this.pool) {
+      if (!e.alive || e.kind === 'cranes') continue;
+      e.hp *= k;
+      e.maxHp *= k;
+    }
+  }
+
+  private stepScale(dt: number): void {
+    if (this.coopScale === this.scaleTarget) return;
+    const step = dt / Math.max(0.01, this.tuning.coop.scale.easeS);
+    const v =
+      this.scaleTarget > this.coopScale
+        ? Math.min(this.scaleTarget, this.coopScale + step)
+        : Math.max(this.scaleTarget, this.coopScale - step);
+    this.applyScale(v);
+  }
+
+  /** Enemy by id (pool scan), or null. */
+  byId(id: number): Enemy | null {
+    for (let i = 0; i < this.pool.length; i++) {
+      const e = this.pool[i]!;
+      if (e.active && e.id === id) return e;
+    }
+    return null;
   }
 
   private readonly offs: (() => void)[] = [];
@@ -208,7 +311,20 @@ export class EnemySystem implements EnemyOwner, CraneOwner, BrainWorld {
 
   /** Spawn one enemy at (x,z). Returns null if maxActive alive enemies already exist. */
   spawn(kind: EnemyKind, x: number, z: number, opts?: SpawnOptions): Enemy | null {
-    if (this.aliveN >= this.tuning.enemies.maxActive) return null;
+    if (this.puppet) return null;
+    return this.spawnAt(kind, x, z, opts, false, 0);
+  }
+
+  /** @internal co-op mirror */
+  spawnAt(
+    kind: EnemyKind,
+    x: number,
+    z: number,
+    opts: SpawnOptions | undefined,
+    force: boolean,
+    forceId: number,
+  ): Enemy | null {
+    if (!force && this.aliveN >= this.maxActive) return null;
     let e: Enemy | null = null;
     for (let i = 0; i < this.pool.length; i++) {
       if (!this.pool[i]!.active) {
@@ -218,7 +334,7 @@ export class EnemySystem implements EnemyOwner, CraneOwner, BrainWorld {
     }
     if (!e) return null;
     const ai = this.tuning.enemies.ai;
-    e.id = this.nextId++;
+    e.id = forceId || this.nextId++;
     e.kind = kind;
     e.position.set(x, this.groundY(x, z), z);
     e.velocity.set(0, 0, 0);
@@ -261,7 +377,13 @@ export class EnemySystem implements EnemyOwner, CraneOwner, BrainWorld {
       e.active = e.alive = false;
       return null;
     }
+    if (this.hpMul !== 1 && kind !== 'cranes') {
+      e.hp *= this.hpMul;
+      e.maxHp = e.hp;
+    }
     this.applyElite(e, opts?.elite ?? null);
+    const pi = this.pool.indexOf(e);
+    this.tgt[pi] = this.chooseTarget?.(pi, e, true) ?? 0;
     e.setState(AiState.Idle, this.rng.range(ai.idleMin, ai.idleMax));
     this.aliveN++;
     this.deps.targets.add(e);
@@ -353,16 +475,14 @@ export class EnemySystem implements EnemyOwner, CraneOwner, BrainWorld {
     const t = this.tuning.enemies;
     const ai = t.ai;
     const p = d.player;
-    this.hasPlayer = !!p;
-    if (p) {
-      this.playerX = p.position.x;
-      this.playerZ = p.position.z;
-      this.playerVX = p.velocity.x;
-      this.playerVZ = p.velocity.z;
-    }
-    this.crystalHeld = !!p?.crystalHeld;
+    this.refreshPlayers();
     this.playerRadius = this.tuning.player.radius;
-    this.baseRevealTarget = d.reveal.targetRadius;
+    this.stepScale(dt);
+    if (this.puppet) {
+      this.puppetStep?.(dt);
+      return;
+    }
+    this.setTarget(0);
     this.suppress = 1;
     this.stepBeat(dt);
     const diff = this.diff();
@@ -370,8 +490,13 @@ export class EnemySystem implements EnemyOwner, CraneOwner, BrainWorld {
     this.tempo = diff.enemyTempo ?? 1;
     if (p && p.energy < this.tuning.bolt.cost) this.tempo *= ai.mercyTempo;
     this.speedMul = diff.enemySpeed ?? 1;
+    if (this.hasteT > 0) {
+      this.hasteT -= dt;
+      this.speedMul *= this.tuning.coop.haste.mul;
+    }
     this.drainMul = diff.drainMul ?? 1;
     this.maxAttackers = Math.min(ai.maxAttackers, diff.maxAttackers ?? ai.maxAttackers);
+    if (this.coopScale > 0.5) this.maxAttackers += this.tuning.coop.scale.maxAttackers - ai.maxAttackers;
     this.attackers = 0;
     for (let i = 0; i < this.pool.length; i++) {
       const e = this.pool[i]!;
@@ -395,6 +520,7 @@ export class EnemySystem implements EnemyOwner, CraneOwner, BrainWorld {
         continue;
       }
 
+      if (this.plN > 1 && this.chooseTarget) this.setTarget(this.chooseTarget(i, e, false));
       const brain = BRAINS[e.kind];
       e.vulnT = Math.max(0, e.vulnT - dt);
       if (!e.worn && brain.vulnerable && e.age >= fallback) e.worn = true;
@@ -459,15 +585,55 @@ export class EnemySystem implements EnemyOwner, CraneOwner, BrainWorld {
       if (e.alive) this.integrate(e, dt);
     }
 
-    if (this.suppress < 1) {
+    const cr = d.crystals;
+    const nc = cr ? Math.min(2, cr.length) : 1;
+    for (let k = 0; k < nc; k++) {
+      const sk = this.supp[k]!;
+      if (sk >= 1) continue;
       // Floor keeps a latched blot lit & shootable; never raises a radius that's already lower.
-      const base = this.baseRevealTarget;
+      const base = this.baseR[k]!;
       const floor = Math.min(base, Math.max(t.blotAi.minRadius, base * t.blotAi.minRadiusFactor));
-      d.reveal.targetRadius = Math.max(floor, base * this.suppress);
+      (cr ? cr[k]! : d.reveal).targetRadius = Math.max(floor, base * sk);
     }
 
     this.stepProjectiles(dt);
     this.stepCranes(dt);
+  }
+
+  /** Collect the wizards for this step + each crystal's unsuppressed target radius. */
+  private refreshPlayers(): void {
+    const d = this.deps;
+    const list = d.getPlayers?.();
+    if (list && list.length > 1) {
+      this.pl[0] = list[0] ?? null;
+      this.pl[1] = list[1] ?? null;
+      this.plN = 2;
+    } else {
+      this.pl[0] = d.player;
+      this.pl[1] = null;
+      this.plN = d.player ? 1 : 0;
+    }
+    const cr = d.crystals;
+    this.baseR[0] = cr?.[0] ? cr[0].targetRadius : d.reveal.targetRadius;
+    this.baseR[1] = cr?.[1] ? cr[1].targetRadius : 0;
+    this.supp[0] = 1;
+    this.supp[1] = 1;
+  }
+
+  /** Point the BrainWorld player snapshot at slot `k` (brains read playerX/Z… per enemy). */
+  private setTarget(k: number): void {
+    const p = this.pl[k] ?? null;
+    this.curP = p;
+    this.curSlot = k;
+    this.hasPlayer = !!p && !p.downed;
+    if (p) {
+      this.playerX = p.position.x;
+      this.playerZ = p.position.z;
+      this.playerVX = p.velocity.x;
+      this.playerVZ = p.velocity.z;
+    }
+    this.crystalHeld = !!p?.crystalHeld;
+    this.baseRevealTarget = this.baseR[k] ?? 0;
   }
 
   private stepBeat(dt: number): void {
@@ -489,7 +655,8 @@ export class EnemySystem implements EnemyOwner, CraneOwner, BrainWorld {
     if (this.beatAge > 3) this.beatLen = 0;
   }
 
-  private stepCranes(dt: number): void {
+  /** @internal co-op mirror */
+  stepCranes(dt: number): void {
     const ai = this.tuning.enemies.ai;
     const rv = this.deps.reveal;
     for (let i = 0; i < this.cranes.length; i++) {
@@ -565,7 +732,8 @@ export class EnemySystem implements EnemyOwner, CraneOwner, BrainWorld {
     e.lagZ += (lz - e.lagZ) * k;
   }
 
-  private updateReveal(e: Enemy, dt: number): void {
+  /** @internal co-op mirror */
+  updateReveal(e: Enemy, dt: number): void {
     const ai = this.tuning.enemies.ai;
     let rv: number;
     if (e.kind === 'cranes') {
@@ -605,7 +773,8 @@ export class EnemySystem implements EnemyOwner, CraneOwner, BrainWorld {
     }
   }
 
-  private stepDying(e: Enemy, dt: number): void {
+  /** @internal co-op mirror */
+  stepDying(e: Enemy, dt: number): void {
     const ai = this.tuning.enemies.ai;
     e.deathT = Math.min(1, e.deathT + dt / ai.deathTime);
     const k = Math.exp(-4 * dt);
@@ -620,10 +789,12 @@ export class EnemySystem implements EnemyOwner, CraneOwner, BrainWorld {
     }
   }
 
-  private stepProjectiles(dt: number): void {
+  /** @internal co-op mirror */
+  stepProjectiles(dt: number): void {
     const pr = this.projectiles;
     const a = this.tuning.enemies.scribblerAi;
-    const p = this.deps.player;
+    const vic = this.deps.victims?.() ?? null;
+    const vn = vic ? vic.length : this.plN;
     const hitR = a.projectileRadius + this.playerRadius;
     const col = this.deps.collision;
     for (let i = 0; i < pr.capacity; i++) {
@@ -644,7 +815,9 @@ export class EnemySystem implements EnemyOwner, CraneOwner, BrainWorld {
         this.fx?.projectileEnd(pr.x[i]!, pr.z[i]!, false);
         continue;
       }
-      if (p && !p.invulnerable) {
+      for (let k = 0; k < vn; k++) {
+        const p = vic ? vic[k] : this.pl[k];
+        if (!p || p.invulnerable || p.downed) continue;
         const dx = p.position.x - pr.x[i]!;
         const dz = p.position.z - pr.z[i]!;
         if (dx * dx + dz * dz <= hitR * hitR) {
@@ -652,6 +825,7 @@ export class EnemySystem implements EnemyOwner, CraneOwner, BrainWorld {
           p.damage(this.tuning.enemies.scribbler.damage, 'scribbler');
           this.deps.events.emit('fx:shake', { intensity: 0.35, duration: 0.2 });
           this.fx?.projectileEnd(pr.x[i]!, pr.z[i]!, true);
+          break;
         }
       }
     }
@@ -675,16 +849,18 @@ export class EnemySystem implements EnemyOwner, CraneOwner, BrainWorld {
     const ox = e.position.x + dirX * (e.radius + 0.35);
     const oz = e.position.z + dirZ * (e.radius + 0.35);
     // Pool full → shot dropped silently (maxProjectiles is a perf budget, not a rule).
-    this.projectiles.fire(ox, oz, dirX, dirZ, a.projectileLife, this.rng.next(), a.maxProjectiles);
+    const seed = this.rng.next();
+    this.projectiles.fire(ox, oz, dirX, dirZ, a.projectileLife, seed, a.maxProjectiles);
+    this.net?.onFire?.(ox, oz, dirX, dirZ, a.projectileLife, seed);
     this.deps.events.emit('sfx:play', { id: 'scribble_fire', position: [ox, 1.2, oz] });
   }
 
   touchPlayer(e: Enemy): boolean {
-    const p = this.deps.player;
-    if (!p || e.contactCd > 0 || !e.alive) return false;
+    const p = this.curP;
+    if (!p || p.downed || e.contactCd > 0 || !e.alive) return false;
     const dx = this.playerX - e.position.x;
     const dz = this.playerZ - e.position.z;
-    const r = e.radius + this.playerRadius;
+    const r = e.radius + this.playerRadius - (p.contactShrink ?? 0);
     if (dx * dx + dz * dz > r * r) return false;
     e.contactCd = this.tuning.enemies.ai.contactCooldown;
     if (!p.invulnerable) {
@@ -695,8 +871,8 @@ export class EnemySystem implements EnemyOwner, CraneOwner, BrainWorld {
   }
 
   damagePlayer(e: Enemy, amount: number, shake: number): void {
-    const p = this.deps.player;
-    if (!p || p.invulnerable || !e.alive) return;
+    const p = this.curP;
+    if (!p || p.invulnerable || p.downed || !e.alive) return;
     p.damage(amount, e.kind);
     if (shake > 0) this.deps.events.emit('fx:shake', { intensity: shake, duration: 0.2 });
   }
@@ -721,6 +897,7 @@ export class EnemySystem implements EnemyOwner, CraneOwner, BrainWorld {
 
   suppressReveal(factor: number): void {
     this.suppress *= factor;
+    this.supp[this.curSlot]! *= factor;
   }
 
   drainPulse(e: Enemy): void {
@@ -730,6 +907,13 @@ export class EnemySystem implements EnemyOwner, CraneOwner, BrainWorld {
   // ───────────── damage ─────────────
 
   onEnemyHit(e: Enemy, amount: number, from: THREE.Vector3): void {
+    if (this.puppet) {
+      // favor the shooter: flash now, the host applies (or rejects) the damage
+      e.hitT = 1;
+      this.fx?.hit(e, from.x, from.z);
+      this.net?.onHit?.(e, amount, from, 0);
+      return;
+    }
     const ai = this.tuning.enemies.ai;
     e.hp -= amount;
     e.hitT = 1;
@@ -773,6 +957,11 @@ export class EnemySystem implements EnemyOwner, CraneOwner, BrainWorld {
   onCraneHit(c: CraneTarget, _amount: number, from: THREE.Vector3): void {
     const e = c.swarm;
     if (!c.alive || !e?.alive) return;
+    if (this.puppet) {
+      c.hitT = 1;
+      this.net?.onHit?.(e, _amount, from, c.id);
+      return;
+    }
     c.alive = false;
     c.dieT = 0;
     c.hitT = 1;
@@ -791,7 +980,8 @@ export class EnemySystem implements EnemyOwner, CraneOwner, BrainWorld {
     if (e.hp <= 0) this.die(e, from.x, from.z);
   }
 
-  private die(e: Enemy, fromX: number, fromZ: number): void {
+  /** @internal co-op mirror */
+  die(e: Enemy, fromX: number, fromZ: number): void {
     const ev = this.deps.events;
     const t = this.tuning.enemies;
     let dx = e.position.x - fromX;

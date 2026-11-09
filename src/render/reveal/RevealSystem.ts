@@ -38,16 +38,28 @@ export class RevealSystem implements RevealAPI {
   radius: number = TUNING.crystal.radiusIdle;
   targetRadius: number = TUNING.crystal.radiusIdle;
   blankPage = 0;
+  /**
+   * Co-op: the partner's crystal (slot 1). Counts as a second *primary* source (survives the
+   * Blank Page, stamps history). src/coop/puppet.ts `crystalView` wraps it as a RevealAPI.
+   */
+  readonly center2 = new THREE.Vector3();
+  radius2: number = TUNING.crystal.radiusIdle;
+  targetRadius2: number = TUNING.crystal.radiusIdle;
+  private dual = false;
   /** Disable history stamping/sampling (Low quality). */
   historyEnabled = true;
 
   readonly uniforms: Record<string, THREE.IUniform>;
 
   private readonly noise = noiseData();
-  private readonly size: number;
-  private readonly hist: Float32Array;
-  private readonly bytes: Uint8Array;
-  private readonly histTex: THREE.DataTexture;
+  /** @internal */
+  readonly size: number;
+  /** @internal */
+  readonly hist: Float32Array;
+  /** @internal */
+  readonly bytes: Uint8Array;
+  /** @internal */
+  readonly histTex: THREE.DataTexture;
   private histMinX: number;
   private histMinZ: number;
   private histWorld: number;
@@ -56,14 +68,17 @@ export class RevealSystem implements RevealAPI {
   private fadeAcc = 0;
   private readonly sources: Source[] = [];
   private nextHandle = 1;
-  private time = 0;
+  /** @internal */
+  time = 0;
   private growth = 0;
   private readonly np: RevealNoiseParams = { scale: 3, amp: 0.6, seep: 0, time: 0, growth: 0, fingers: 0 };
   private readonly srcVecs: THREE.Vector4[];
   /** 1 = permanent texel (kills, dash trails, prints): skipped by the regular fade. */
-  private readonly perm: Uint8Array;
+  /** @internal */
+  readonly perm: Uint8Array;
   /** Per-region (REGION² texels) sim time of the last ink stamp, for blank-paper reclaim. */
-  private readonly regionLast: Float32Array;
+  /** @internal */
+  readonly regionLast: Float32Array;
   private readonly regions: number;
   private reclaimAcc = 0;
   /** Reclaim strength multiplier (difficulty / daily rules). 0 disables reclaim. */
@@ -116,7 +131,21 @@ export class RevealSystem implements RevealAPI {
       uRevealHistRect: { value: new THREE.Vector4(this.histMinX, this.histMinZ, 1 / this.histWorld, 1) },
       uRevealSources: { value: this.srcVecs },
       uRevealSourceCount: { value: 0 },
+      uRevealCenter2: { value: this.center2 },
+      uRevealRadius2: { value: this.radius2 },
+      uRevealDual: { value: 0 },
     };
+  }
+
+  /** Co-op: enable / disable the second crystal. */
+  setDual(on: boolean): void {
+    this.dual = on;
+    this.uniforms.uRevealDual!.value = on ? 1 : 0;
+    if (!on) this.radius2 = this.targetRadius2 = TUNING.crystal.radiusIdle;
+  }
+
+  get dualActive(): boolean {
+    return this.dual;
   }
 
   /** World rect covered by the 256² history map. Clears history. */
@@ -340,6 +369,12 @@ export class RevealSystem implements RevealAPI {
     const span = Math.max(0.5, (C.radiusHeld - C.radiusIdle) / Math.max(0.05, C.growTime));
     const g = dt > 0 ? Math.max(0, (this.radius - prev) / dt / span) : 0;
     this.growth += (Math.min(1, g * 1.6) - this.growth) * (1 - Math.exp(-dt * 8));
+    if (this.dual) {
+      const t2 = Math.min(this.targetRadius2, this.radiusCap);
+      const tau2 = t2 > this.radius2 ? C.growTime : this.radiusCapT > 0 ? 0.25 : C.shrinkTime;
+      this.radius2 += (t2 - this.radius2) * (tau2 > 0 ? 1 - Math.exp((-dt * 4.6) / tau2) : 1);
+      if (Math.abs(t2 - this.radius2) < 1e-4) this.radius2 = t2;
+    }
 
     for (const s of this.sources) {
       if (!s.alive) continue;
@@ -355,6 +390,7 @@ export class RevealSystem implements RevealAPI {
       if (this.stampAcc >= stepS) {
         this.fadeHistory(this.fadeAcc * R.historyFadePerSec);
         this.stamp(this.center.x, this.center.z, this.radius);
+        if (this.dual) this.stamp(this.center2.x, this.center2.z, this.radius2);
         this.fadeAcc = 0;
         this.stampAcc %= stepS;
         this.histDirty = true;
@@ -372,6 +408,7 @@ export class RevealSystem implements RevealAPI {
 
     const u = this.uniforms;
     u.uRevealRadius!.value = this.radius;
+    u.uRevealRadius2!.value = this.radius2;
     u.uRevealTime!.value = this.time;
     u.uRevealGrowth!.value = this.growth;
     u.uRevealBlank!.value = this.blankPage;
@@ -504,7 +541,9 @@ export class RevealSystem implements RevealAPI {
     np.fingers = TUNING.reveal.growthFingers;
     const edge = C.edgeWidth;
     const n = revealOffset(this.noise, x, z, np);
-    const prim = circleField(x - this.center.x, z - this.center.z, this.radius, n, edge);
+    let prim = circleField(x - this.center.x, z - this.center.z, this.radius, n, edge);
+    if (this.dual)
+      prim = Math.max(prim, circleField(x - this.center2.x, z - this.center2.z, this.radius2, n, edge));
     let sec = -1;
     const count = this.uniforms.uRevealSourceCount!.value as number;
     for (let i = 0; i < count; i++) {
@@ -529,6 +568,7 @@ export class RevealSystem implements RevealAPI {
 
   reset(): void {
     this.radius = this.targetRadius = TUNING.crystal.radiusIdle;
+    this.radius2 = this.targetRadius2 = TUNING.crystal.radiusIdle;
     this.blankPage = 0;
     this.growth = 0;
     this.radiusCap = Number.POSITIVE_INFINITY;

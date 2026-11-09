@@ -53,7 +53,8 @@ void main() {
 `;
 
 export const INK_SHARED_FRAG = /* glsl */ `
-uniform vec3 uKeyDir, uCrystalPos;
+uniform vec3 uKeyDir, uCrystalPos, uCrystalPos2;
+uniform float uCrystal2;
 uniform float uShadow, uTime, uFogNear, uFogFar, uBoilSeed, uDpr;
 uniform vec3 uPaper, uInk, uPencil, uPencilDark, uGlowEdge, uGlowCore;
 uniform float uRimPx, uWetPx, uSketchAmt;
@@ -107,6 +108,10 @@ void main() {
   vec3 L = uCrystalPos - vWPos;
   float d2 = dot(L, L);
   float pl = max(dot(N, normalize(L)), 0.0) * glowAmt / (1.0 + d2 * 1.6);
+  if (uCrystal2 > 0.5) {
+    vec3 L2 = uCrystalPos2 - vWPos;
+    pl += max(dot(N, normalize(L2)), 0.0) * glowAmt / (1.0 + dot(L2, L2) * 1.6);
+  }
   float lit = alb * (0.18 + key + pl);
   float fog = smoothstep(uFogNear, uFogFar, vViewZ);
   float tone = lit * (1.0 - fog);
@@ -200,6 +205,8 @@ export function createSharedUniforms(): Record<string, THREE.IUniform> {
     uBoilSeed: { value: 0 },
     uKeyDir: { value: new THREE.Vector3(-0.5, 0.75, 0.45).normalize() },
     uCrystalPos: { value: new THREE.Vector3(0, 2, 0) },
+    uCrystalPos2: { value: new THREE.Vector3(0, 2, 0) },
+    uCrystal2: { value: 0 },
     uShadow: { value: 0.3 },
     uFogNear: { value: 9 },
     uFogFar: { value: 26 },
