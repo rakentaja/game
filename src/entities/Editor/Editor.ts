@@ -20,6 +20,7 @@
  */
 import * as THREE from 'three';
 import type { Damageable, EnemyKind, GameContext, PlayerVerb } from '../../core/types';
+import { PAL } from '../../data/palette';
 import { TUNING } from '../../data/tuning';
 import {
   type Attack,
@@ -27,6 +28,7 @@ import {
   CORE_INDEX,
   EditorFSM,
   type EditorSink,
+  MAX_PLAYERS,
   type RewriteState,
   type WeakPointState,
   WP_COUNT,
@@ -90,6 +92,20 @@ class WeakPointTarget implements Damageable {
   }
 }
 
+/**
+ * Co-op hooks (src/coop sets them). Host: replicate attack spawn params and moments; guest
+ * (puppet): weak-point bolts go to the host.
+ */
+export interface EditorCoopHooks {
+  /** Host: attack slot `i` changed stage (telegraph = spawn params are final). */
+  onAttack?(i: number, a: Attack, stage: 'telegraph' | 'strike' | 'end'): void;
+  /** Guest: a local bolt hit weak point `index`. */
+  onHit?(index: number, amount: number): void;
+  /** Host: STET resolved / Spread toggled (net replication + downing the erased player). */
+  onStet?(stage: 'start' | 'parry' | 'erased' | 'saved', target: number): void;
+  onSpread?(on: boolean): void;
+}
+
 export interface EditorOptions {
   /** Parent for all Editor objects (default ctx.render.scene). */
   parent?: THREE.Object3D;
@@ -121,6 +137,12 @@ export class Editor implements EditorSink {
   private inkT = 0;
   /** Player is dead / reprinting: the Editor holds its attacks. */
   playerDown = false;
+  /** Co-op guest: mirror the host's fight (no scheduling); see EditorFSM.stepPuppet. */
+  puppet = false;
+  coop: EditorCoopHooks | null = null;
+  /** Co-op visuals: the Spread's gutter wall and the STET red-pencil circle. */
+  private gutter: THREE.Mesh | null = null;
+  private stetRing: THREE.Mesh | null = null;
   /** True when the P3 core sits inside the crystal light or the ink trail (Blank Page). */
   coreLit = false;
   /** Blank Page, Reversed: where the player's ink has been (crystal trail + dashes). */
@@ -276,8 +298,11 @@ export class Editor implements EditorSink {
     inp.playerRadius = ctx.tuning.player.radius;
     inp.revealRadius = ctx.reveal.radius;
     f.reduceMotion = ctx.settings.reduceMotion;
+    this.fillPlayers();
 
-    f.step(this.playerDown && f.state === 'phase' ? 0 : dt);
+    if (this.puppet) f.stepPuppet(dt);
+    else f.step(this.playerDown && f.state === 'phase' ? 0 : dt);
+    this.stepCoopVisuals();
     this.stepPaint(dt);
     this.rig.update(f, dt, inp.px, inp.pz);
     this.inkGuard(dt);
@@ -302,6 +327,71 @@ export class Editor implements EditorSink {
     const want =
       f.active || f.state === 'dying' ? (f.state === 'intro' || f.state === 'dying' ? 0.75 : 0.35) : 0;
     this.cameraWeight += (want - this.cameraWeight) * (1 - Math.exp(-2 * dt));
+  }
+
+  /**
+   * Co-op: every wizard in `ctx.players` (slot order) becomes an Editor player with its crystal.
+   * The puppet (guest) only tests its own wizard, so it keeps the single-player input.
+   */
+  private fillPlayers(): void {
+    const f = this.fsm;
+    const list = this.ctx.players;
+    if (this.puppet || !list || list.length < 2) {
+      f.input.playerCount = 0;
+      return;
+    }
+    const rv = this.ctx.reveal as typeof this.ctx.reveal & { radius2?: number };
+    const n = Math.min(MAX_PLAYERS, list.length);
+    for (let k = 0; k < n; k++) {
+      const p = list[k]!;
+      const e = f.input.players[k]!;
+      e.x = p.position.x;
+      e.z = p.position.z;
+      e.down = !!p.downed;
+      e.cx = p.crystalPos.x;
+      e.cy = p.crystalPos.y;
+      e.cz = p.crystalPos.z;
+      e.held = p.crystalHeld;
+      e.radius = p === this.ctx.player ? rv.radius : (rv.radius2 ?? rv.radius);
+    }
+    f.input.playerCount = n;
+  }
+
+  private stepCoopVisuals(): void {
+    const f = this.fsm;
+    if (f.spread && !this.gutter) {
+      const [, , r] = this.ctx.tuning.boss.arena;
+      const m = new THREE.Mesh(
+        new THREE.BoxGeometry(this.ctx.tuning.coop.spread.gutterHalfWidth * 2, 2.6, r * 2.2),
+        new THREE.MeshBasicMaterial({ color: PAL.ink }),
+      );
+      m.name = 'EditorGutter';
+      this.gutter = m;
+      this.group.add(m);
+    }
+    if (this.gutter) {
+      this.gutter.visible = f.spread;
+      const [, cz] = this.ctx.tuning.boss.arena;
+      this.gutter.position.set(f.gutterX, 1.3, cz);
+    }
+    const s = f.stet;
+    if (s.active && !this.stetRing) {
+      const R = this.ctx.tuning.coop.stet.radius;
+      const m = new THREE.Mesh(
+        new THREE.RingGeometry(R - 0.12, R, 40).rotateX(-Math.PI / 2),
+        new THREE.MeshBasicMaterial({ color: PAL.glowEdge, transparent: true, side: THREE.DoubleSide }),
+      );
+      m.name = 'EditorStet';
+      this.stetRing = m;
+      this.group.add(m);
+    }
+    if (this.stetRing) {
+      this.stetRing.visible = s.active;
+      this.stetRing.position.set(s.x, 0.08, s.z);
+      const mat = this.stetRing.material as THREE.MeshBasicMaterial;
+      mat.opacity = s.held ? 0.45 : 0.6 + 0.4 * s.erase;
+      this.stetRing.scale.setScalar(1 + (s.held ? 0.08 : 0) - s.erase * 0.25);
+    }
   }
 
   /**
@@ -594,6 +684,13 @@ export class Editor implements EditorSink {
 
   // ─────────────────────────── bolts ───────────────────────────
   boltHit(index: number, amount: number, from: THREE.Vector3): void {
+    if (this.puppet) {
+      // favor the shooter: the host applies it; the snapshot / bossWp event confirms
+      const w = this.fsm.wps[index];
+      if (w) w.flash = 0.35;
+      this.coop?.onHit?.(index, amount);
+      return;
+    }
     const ok = this.fsm.hitWeakpoint(index, amount);
     const w = this.fsm.wps[index]!;
     const P = this.particles;
@@ -640,6 +737,7 @@ export class Editor implements EditorSink {
   }
 
   onAttack(a: Attack, stage: 'telegraph' | 'strike' | 'end'): void {
+    this.coop?.onAttack?.(this.fsm.attacks.indexOf(a), a, stage);
     this.ctx.events.emit('boss:attack', { kind: a.kind, stage });
     const at = _v.set(a.ax, 0.2, a.az);
     if (stage === 'strike') {
@@ -691,10 +789,35 @@ export class Editor implements EditorSink {
   }
 
   onPlayerHit(a: Attack, player: number): void {
-    const pl = this.ctx.player;
-    // TODO(co-op): route hits on player > 0 to the partner player
-    if (!pl || player !== 0) return;
+    // co-op: input.players follows ctx.players; a remote wizard tests its own hits (favor the victim)
+    const list = this.ctx.players;
+    const pl = this.fsm.input.playerCount >= 2 && list ? list[player] : player === 0 ? this.ctx.player : null;
+    if (!pl || pl.remote) return;
     pl.damage(this.ctx.tuning.boss.contactDamage, a.kind === 'drag' ? 'eraser' : 'editor');
+  }
+
+  onSpread(on: boolean): void {
+    this.coop?.onSpread?.(on);
+    if (on)
+      this.ctx.events.emit('fx:panelCut', {
+        word: 'spread',
+        focus: this.focusTuple(),
+        reason: 'boss:spread',
+      });
+  }
+
+  onStet(stage: 'start' | 'parry' | 'erased' | 'saved', target: number): void {
+    this.coop?.onStet?.(stage, target);
+    const s = this.fsm.stet;
+    if (stage === 'start') this.ctx.audio.play('scribble_fire', { volume: 0.9, rate: 0.7 });
+    else if (stage === 'parry') {
+      this.ctx.events.emit('fx:panelCut', { word: 'stet', focus: [s.x, 1, s.z], reason: 'boss:stet' });
+      this.ctx.events.emit('fx:shake', { intensity: 0.7, duration: 0.5 });
+    } else if (stage === 'erased') {
+      this.ctx.reveal.eraseStrip(s.x - 1, s.z, s.x + 1, s.z, this.ctx.tuning.coop.stet.radius);
+      const pl = this.ctx.players?.[target];
+      if (pl && !pl.remote) pl.damage(99, 'eraser');
+    }
   }
 
   onSpawn(kind: EnemyKind, x: number, z: number): void {
@@ -857,7 +980,18 @@ export class Editor implements EditorSink {
     }
   }
 
+  /** Co-op visuals cleanup (part of dispose). */
+  private disposeCoop(): void {
+    for (const m of [this.gutter, this.stetRing]) {
+      if (!m) continue;
+      m.geometry.dispose();
+      (m.material as THREE.Material).dispose();
+    }
+    this.gutter = this.stetRing = null;
+  }
+
   dispose(): void {
+    this.disposeCoop();
     // never leave the player with a cut verb or the soundtrack missing stems
     this.fsm.releaseAll();
     this.stopLoops();
