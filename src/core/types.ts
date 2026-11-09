@@ -32,6 +32,10 @@ export type Lang = 'tr' | 'en';
 export type QualityLevel = 'auto' | 'low' | 'high';
 /** Ghost Inker playback: only in Daily Issues (default), every run, or never. */
 export type GhostMode = 'daily' | 'always' | 'off';
+/** Playable hero classes (wave 2). 'inker' is the original wizard. */
+export type HeroId = 'inker' | 'penciller' | 'letterer' | 'colorist';
+/** Player slot: 0 = local/host, 1 = second player (co-op). */
+export type PlayerSlot = 0 | 1;
 /** Verbs the Editor can cut from the issue (boss "Rewrites"). */
 export type PlayerVerb = 'bolt' | 'dash' | 'crystal' | 'print';
 /** Narration caption effects ("AND THEN THE CRYSTAL WENT OUT"). */

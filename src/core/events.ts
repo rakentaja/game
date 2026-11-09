@@ -1,4 +1,13 @@
-import type { CaptionEffect, DamageSource, EnemyKind, PageId, PlayerVerb, SfxId } from './types';
+import type {
+  CaptionEffect,
+  DamageSource,
+  EnemyKind,
+  HeroId,
+  PageId,
+  PlayerSlot,
+  PlayerVerb,
+  SfxId,
+} from './types';
 
 /** All cross-system events. Add new ones here; never emit untyped strings. */
 export interface GameEvents {
@@ -99,6 +108,29 @@ export interface GameEvents {
    * Co-op lobby: host pressed Start and both ends agreed (net workstream, src/ui/screens/coop.ts).
    * `at` is host-clock ms; get the live session with `(await import('../net')).activeSession()`.
    */
+  // ── Wave 2 contracts: heroes + co-op. `pid` = PlayerSlot; omitted = slot 0. ──
+  /** [heroes] A hero ability fired. Serializable so co-op can replicate it. */
+  'hero:action': {
+    pid: PlayerSlot;
+    hero: HeroId;
+    action: 'tap' | 'hold' | 'release' | 'swipe' | 'ultimate';
+    /** Kit-specific compact payload (positions as [x,z], ids, seeds). */
+    data?: Record<string, number | number[] | string>;
+  };
+  /** [heroes] Splash (ultimate) meter changed, 0..1. */
+  'splash:changed': { pid: PlayerSlot; value: number };
+  /** [heroes] A page perk was chosen. */
+  'hero:perk': { pid: PlayerSlot; hero: HeroId; perk: string };
+  /** [heroes/coop] A combo between two heroes triggered. */
+  'hero:combo': { combo: string; position: [number, number, number] };
+  /** [coop] A player went down (co-op) / was reprinted by their partner. */
+  'player:downed': { pid: PlayerSlot; position: [number, number, number] };
+  'player:revived': { pid: PlayerSlot };
+  /** [coop] Partner presence. */
+  'coop:peer': { state: 'joined' | 'left' | 'rejoined'; pid: PlayerSlot };
+  /** [coop] Player count changed (enemy/boss scaling listens). */
+  'coop:players': { count: 1 | 2 };
+
   'coop:start': {
     code: string;
     role: 'host' | 'guest';
