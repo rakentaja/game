@@ -19,6 +19,22 @@ export type DamageSource = EnemyKind | 'editor' | 'eraser' | 'hazard';
 export type Difficulty = 'story' | 'normal';
 export type Lang = 'tr' | 'en';
 export type QualityLevel = 'auto' | 'low' | 'high';
+/** Verbs the Editor can cut from the issue (boss "Rewrites"). */
+export type PlayerVerb = 'bolt' | 'dash' | 'crystal' | 'print';
+/** Narration caption effects ("AND THEN THE CRYSTAL WENT OUT"). */
+export type CaptionEffect = 'crystalOut' | 'fogIn' | 'ghostsHaste' | 'inkDrought';
+
+/** Shared beat clock (audio workstream implements; anyone reads). Audio-clock based. */
+export interface BeatAPI {
+  /** Current BPM (0 when no track is playing). */
+  readonly bpm: number;
+  /** Signed ms from now to the nearest 8th-note grid line (negative = just passed). */
+  offsetMs(): number;
+  /** True if now is within ±windowMs of an 8th note. Default window comes from tuning. */
+  onBeat(windowMs?: number): boolean;
+  /** 0..1 phase within the current beat (for visual pulses). */
+  phase(): number;
+}
 
 /** SFX catalogue (PLAN §7). Audio implements every id; missing files fall back to procedural synth. */
 export type SfxId =
@@ -186,6 +202,8 @@ export interface Damageable {
   readonly alive: boolean;
   /** Only revealed targets may be hit or targeted. */
   readonly revealed: boolean;
+  /** True while the target is winding up / telegraphing an attack (Close-Up Crits). Optional. */
+  readonly attacking?: boolean;
   hit(amount: number, from: THREE.Vector3): void;
 }
 
@@ -375,6 +393,8 @@ export interface GameContext {
   collision: CollisionAPI;
   targets: TargetRegistry;
   player: PlayerAPI | null;
+  /** Beat clock; null until audio boots. */
+  beat?: BeatAPI | null;
   stats: RunStats;
   /** Loop control (time scale for hit-stop / panel cuts). */
   time: { scale: number; simTime: number };

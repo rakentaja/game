@@ -1,4 +1,4 @@
-import type { DamageSource, EnemyKind, PageId, SfxId } from './types';
+import type { CaptionEffect, DamageSource, EnemyKind, PageId, PlayerVerb, SfxId } from './types';
 
 /** All cross-system events. Add new ones here; never emit untyped strings. */
 export interface GameEvents {
@@ -51,6 +51,34 @@ export interface GameEvents {
   'trigger:fired': { id: string };
   /** Wordless tutorial hint request (UI draws the glyph). `show:false` hides it. */
   'tutorial:hint': { hint: 'move' | 'crystal' | 'bolt' | 'dash' | 'print'; show: boolean };
+
+  // ── Idea Ledger contracts (wave 1). Producers named in brackets; additive only. ──
+  /** [audio] Fired on every beat of the current music track (audio clock, not frame clock). */
+  'audio:beat': { beat: number; bar: number; bpm: number };
+  /** [player] An action landed inside the on-beat window (Ink Rhythm bonus). */
+  'combat:onBeat': { action: 'bolt' | 'dash' | 'print' };
+  /** [player] Dash through a hazard in the last moments before impact (Ink Parry). */
+  'combat:parry': { position: [number, number, number] };
+  /** [player] Ink lines closed a loop (Frame Lasso). `ids` = enemies caught. */
+  'combat:lasso': { ids: number[]; center: [number, number, number]; area: number };
+  /** [player] Crystal snuffed to 0 m / flared back out (Snuff & Flare). */
+  'crystal:snuff': { snuffed: boolean };
+  'crystal:flare': { caught: number };
+  /** [player] Editor's Red Pen style grade changed. */
+  'style:grade': { grade: 'D' | 'C' | 'B' | 'A' | 'S' | 'P'; score: number };
+  /** [world] Fraction of the current page that is inked, 0..1 (throttled ~4 Hz). */
+  'reveal:progress': { t: number };
+  /** [world/ui] A narration caption appears; `effect` (optional) is applied after `delay` s unless cancelled. */
+  'caption:show': { id: string; key: string; effect?: CaptionEffect; delay?: number };
+  'caption:cancel': { id: string };
+  /** [world] A caption effect actually fired (game systems react: crystal out, fog...). */
+  'caption:effect': { id: string; effect: CaptionEffect };
+  /** [boss] The Editor cut (or restored) a player verb. Player obeys; UI shows it. */
+  'boss:rewrite': { verb: PlayerVerb; cut: boolean };
+  /** [boss] The Editor erased / restored a music stem (audio reacts). */
+  'boss:eraseStem': { stem: number; erased: boolean };
+  /** [enemies] Encounter director intensity 0..1 and beat. */
+  'director:phase': { phase: 'build' | 'peak' | 'relax'; intensity: number };
 }
 
 type Handler<T> = (payload: T) => void;
