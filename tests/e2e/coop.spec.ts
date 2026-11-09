@@ -71,7 +71,6 @@ async function readyAndStart(host: Page, guest: Page): Promise<void> {
   await host.bringToFront();
   await expect(host.locator('[data-act="start"]')).toBeEnabled({ timeout: 10_000 });
   await host.locator('[data-act="start"]').click();
-  await expect(host.locator('.coop-wait')).toBeVisible();
   const ev = await guest.waitForFunction(
     () => (window as unknown as { __coopStart?: unknown }).__coopStart,
     null,
@@ -81,8 +80,11 @@ async function readyAndStart(host: Page, guest: Page): Promise<void> {
     },
   );
   await guest.bringToFront();
-  await expect(guest.locator('.coop-wait')).toBeVisible();
   expect(await ev.jsonValue()).toMatchObject({ role: 'guest', slot: 1, heroes: ['inker', 'inker'] });
+  // wave 2: Start launches the co-op run on both machines (the lobby closes)
+  await expect(host.locator('html')).toHaveAttribute('data-coop', 'host', { timeout: 60_000 });
+  await expect(guest.locator('html')).toHaveAttribute('data-coop', 'guest', { timeout: 60_000 });
+  await expect(host.locator('html')).toHaveAttribute('data-coop-peers', '2');
 }
 
 test.describe('co-op lobby', () => {
@@ -103,11 +105,11 @@ test.describe('co-op lobby', () => {
     await expect(host.locator('.coop-rtt')).toBeVisible({ timeout: 5000 });
     await readyAndStart(host, guest);
 
-    // guest leaves → host keeps the seat (rejoin window) …
-    await guest.locator('[data-act="leave"]').click();
+    // guest's tab goes away → the host holds the seat and fades the partner out (then plays solo)
+    await guest.close();
     await host.bringToFront();
-    await expect(host.locator('.coop-card')).toHaveAttribute('data-state', /reconnecting|waiting/, {
-      timeout: 10_000,
+    await host.waitForFunction(() => /fading|gone/.test((window as any).__net?.partner ?? ''), null, {
+      timeout: 15_000,
     });
     expect(errors).toEqual([]);
   });
