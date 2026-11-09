@@ -1,7 +1,7 @@
 # Co-op networking (2 players)
 
-Wave 1 ships the transport, codec, clock/interpolation and the lobby. Gameplay sync (who
-simulates what, which snapshots go over the wire) is wave 2.
+Wave 1 shipped the transport, codec, clock/interpolation and the lobby. Wave 2 adds the
+gameplay sync (`src/coop/**`, lazy chunk) — see "Gameplay sync" below.
 
 - Code: `src/net/**` (this doc), lobby UI `src/ui/screens/coop.ts` (+ `coop.css`),
   title hook in `src/ui/screens/title.ts`, event `coop:start` in `src/core/events.ts`.
@@ -62,6 +62,71 @@ and the Firebase relay (≈ 2 KB) loads only if it is configured and needed.
 - Wave 2: `(await import('../net')).activeSession()` gives the live session. Use
   `session.send(def, msg, reliable)` and `session.on('message', …)` with defs registered
   on `NET_REGISTRY` at id ≥ 32.
+
+## Gameplay sync (wave 2)
+
+Code: `src/coop/**` (lazy chunk `net-coop-*.js`, reached only through `import('../coop')` from
+`src/game/Game.ts`), partner HUD `src/ui/hud/partner.ts`, tuning `TUNING.coop`.
+
+| Module | What |
+|---|---|
+| `rules.ts` | Shared rules for local 2P and online: downed/revive, both-down reprint, tether, dash-through ink, Two-Page Spread clamp |
+| `local.ts` | `?local2p=1`: second `Player` + `Combat` + `InkEnergy` (IJKL move, U crystal, O bolt, H dash, Y snuff, or the 2nd gamepad) |
+| `net.ts` | `NetCoop`: host/guest replication, hit validation, scheduling, disconnect/rejoin/takeover |
+| `wire.ts` | Message ids 40–43, wizard state, enemy `SnapshotSchema`, boss block, page save, RLE |
+| `RemotePlayer.ts` | The partner's wizard: newest replicated state for gameplay, a puppet-driven `Player` body for visuals |
+| `puppet.ts` | Guest enemy mirror, co-op targeting chooser, crystal-1 `RevealAPI` facade, page-save helpers |
+| `history.ts` | `HitHistory`: 250 ms per-tick ring of (enemy id, alive, revealed) |
+
+**Authority.** The host owns the world: enemies, projectiles, spawner/director, boss FSM,
+sketch printing, triggers, pickups, crit rules. Each client owns its own wizard (movement, dash,
+crystal, ink), with no reconciliation. `ctx.players` is slot-ordered on both machines and
+`ctx.player` stays the local wizard. RevealSystem crystal 0 is always the local wizard, crystal 1
+the partner (`setDual`, `center2`/`radius2`); the reveal history is rebuilt locally from both
+crystals, dash trails and events, and only sent in full (RLE) on a (re)join.
+
+**Wire.**
+- `SNAP` (40, unreliable, 20 Hz): host tick + host-clock time, epoch, blot suppression on the
+  guest crystal, the host wizard (~24 B), the boss block when the Editor is up, and ≤ 12 nearest
+  enemy rows delta-compressed against the newest acked baseline.
+- `PSTATE` (41, unreliable, 30 Hz): snapshot ack + the guest's last 3 wizard states (seq-tagged,
+  host-clock stamped) so a lost packet costs nothing.
+- `EVT` (42, reliable): batches of tick-tagged events — spawn/die/hit, scribbler fire params,
+  hit requests/acks, sketch printed, trigger fired (checkpoints included), respawn, shared panel
+  cut, page turn, page save, contact damage, ink claim, dash, boss phase/attack/weak point/STET,
+  `hero:action`.
+- `SYNC` (43, reliable): page save + reveal history for a joining/rejoining guest.
+- Every event batch and snapshot carries an **epoch** (bumped on each page build and checkpoint
+  respawn on both machines); a guest holds batches of a future epoch until its own page is up.
+
+**Combat.** Guest bolts favor the shooter: the guest flashes the hit and sends `hitReq` with
+`fireTick = estHostTick − interpDelay`; the host accepts if the target was alive + revealed in
+the history ring around that tick (or is now) and refunds the bolt's ink otherwise. Player
+damage favors the victim: scribbler strokes and Editor lanes are simulated on both machines from
+their spawn params and each tests only its own wizard; ghost contact runs on the host against
+the guest's newest position with a 0.1 m smaller radius. Hit-stop and crit cuts stay local;
+shared panel cuts, boss phase cuts and page turns are scheduled by the host at tick + 6.
+
+**Pages.** The page end fires only when both wizards are inside the exit rect (host decides).
+Downed wizards crawl as "UNFINISHED" sketches (40 % speed); the partner reprints them by holding
+the crystal on them for 2 s inside the reveal; both down → checkpoint reprint for both. Past
+22 m the page edge curls (vignette + soft leash); past 30 m the lagging wizard is pulled to the
+partner with a "MEANWHILE…" cut.
+
+**Drops.** Partner gone: fades out over 10 s, the run continues solo and the 2-player scaling
+(ghost HP ×1.6, maxActive 12, attacker cap 3) eases back over 3 s; the seat is held 60 s and a
+rejoin gets `SYNC`. Host gone: the guest shows a 10 s reconnect overlay, then closes the room and
+reloads the page at the replicated checkpoint (printed sketches, spent triggers, cleared waves,
+boss phase + weak-point mask). Online pages never pause, and a 100 ms watchdog keeps ticking the
+sim when the tab loses rAF.
+
+**Boss co-op moments** (two players only): *Two-Page Spread* (P2 gutter wall, weak points print
+only from the other panel) and *STET* (P3 red-pencil circle; partner holds the crystal on it;
+both holding in the 400 ms slam window parries the eraser into the Editor).
+
+**Hooks for tests/e2e.** `window.__net` (`role`, `slot`, `solo`, `partner`, `players`, `epoch`,
+`tick`, `rtt`, `stats`) and `<html data-coop="host|guest|local|solo" data-coop-peers>`.
+`?autoplay=1` with `?room=` or `?coop=host` goes through the lobby instead of auto-starting.
 
 ## Connection tiers
 
@@ -167,7 +232,11 @@ rely on the expiry and shape checks. That is weaker: anyone can write junk into 
 - Unit tests: `tests/unit/net-*.test.ts` cover the codec, delta compression, interpolator,
   clock sync, LossyTransport determinism, loopback handshake/rejoin/rebuild, relay
   batching and the tier ladder.
-- E2E: `tests/e2e/coop.spec.ts`. The offline tests run by default. The real-network test
+- Unit: `tests/unit/coop-net.test.ts` runs two headless sims (`tests/unit/coop-harness.ts`)
+  over Loopback + Lossy transports: convergence, hit accept/reject + refund, both-at-exit page
+  turn, disconnect → solo scaling; plus wire, history, triggers and rules tests.
+- E2E: `tests/e2e/coop.spec.ts` (lobby → run) and `tests/e2e/coop-run.spec.ts` (two autoplay
+  bots over `loopback-bc` + `netsim`, long; `COOP_RUN_E2E=0` skips it). The offline tests run by default. The real-network test
   (two browser contexts, real Trystero/Nostr) is opt-in with `COOP_E2E_REAL=1`.
 
 ## Abuse caveats

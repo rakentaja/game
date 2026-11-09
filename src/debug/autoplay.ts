@@ -120,6 +120,7 @@ export class AutoplayBot {
   private pts: Float32Array;
   private n: number;
   private progress = 0;
+  private placed = false;
   private time = 0;
   private fireT = 0;
   private holdT = 0;
@@ -251,7 +252,7 @@ export class AutoplayBot {
       deps.events.on('player:respawn', () => {
         this.stuckT = 0;
         this.printing = null;
-        this.progress = this.nearestIndex();
+        this.placed = false;
         this.done = false;
       }),
     );
@@ -296,6 +297,11 @@ export class AutoplayBot {
     const dashReady = (p.dashCooldown01 ?? 1) <= 0;
     this.px = px;
     this.pz = pz;
+    // start from wherever this wizard stands (a co-op partner spawns beside the path start)
+    if (!this.placed) {
+      this.placed = true;
+      this.progress = this.nearestIndex();
+    }
     this.nearD = Infinity;
     this.blotD = Infinity;
     this.threats = 0;

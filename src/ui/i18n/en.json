@@ -189,7 +189,10 @@
     "stetBolt": "STET! THE BOLT STAYS",
     "stetDash": "STET! THE DASH STAYS",
     "stetCrystal": "STET! THE CRYSTAL STAYS",
-    "stetPrint": "STET! PRINTING STAYS"
+    "stetPrint": "STET! PRINTING STAYS",
+    "meanwhile": "MEANWHILE…",
+    "stet": "STET!",
+    "spread": "TWO-PAGE SPREAD!"
   },
   "style": {
     "label": "Editor's mark: {grade}",
@@ -330,6 +333,18 @@
       "penciller": "Penciller",
       "letterer": "Letterer",
       "colorist": "Colorist"
+    },
+    "run": {
+      "player2": "Player 2",
+      "unfinished": "UNFINISHED",
+      "downed": "Unfinished — hold your crystal on them",
+      "waitExit": "Waiting for your partner at the page edge…",
+      "solo": "Your partner left — inking solo",
+      "soloShort": "Solo",
+      "dropped": "Partner dropped — fading out…",
+      "rejoined": "Your partner is back!",
+      "hostLost": "Host dropped — reconnecting… {s}s",
+      "stetHint": "Hold your crystal on the red circle!"
     }
   }
 }

@@ -89,6 +89,13 @@ export function transportFactory(
 }
 
 let active: NetSession | null = null;
+const sessionListeners = new Set<(s: NetSession) => void>();
+
+/** Get told about every session the lobby creates (co-op resume watches the guest one). */
+export function onSession(fn: (s: NetSession) => void): () => void {
+  sessionListeners.add(fn);
+  return () => sessionListeners.delete(fn);
+}
 
 /** The session the lobby created (wave 2 gameplay picks it up after 'coop:start'). */
 export function activeSession(): NetSession | null {
@@ -123,6 +130,7 @@ function make(role: Role, code: string, flags?: NetFlags): NetSession {
   s.on('state', (st) => {
     if (st === 'closed' && active === s) active = null;
   });
+  for (const fn of sessionListeners) fn(s);
   return s;
 }
 
