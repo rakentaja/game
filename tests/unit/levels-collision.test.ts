@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import type { LevelDef } from '../../src/core/types';
+import { TUNING } from '../../src/data/tuning';
 import { LEVEL1 } from '../../src/world/Level1';
 import { LEVEL2 } from '../../src/world/Level2';
 import { buildLevelData } from '../../src/world/levelData';
@@ -150,6 +151,22 @@ describe('LevelCollision', () => {
 });
 
 describe('shipped pages collision', () => {
+  it('print hints only show once the sketch is within crystal reach', () => {
+    const reach = TUNING.sketch.requiredRadius * TUNING.sketch.radiusSlack;
+    for (const def of [LEVEL1, LEVEL2]) {
+      const d = buildLevelData(def);
+      for (const t of def.triggers) {
+        if (t.action?.type !== 'tutorial' || t.action.hint !== 'print') continue;
+        const [x0, z0, x1, z1] = t.rect;
+        for (let x = x0; x <= x1; x += 0.25)
+          for (let z = z0; z <= z1; z += 0.25) {
+            if (!d.collision.walkable(x, z)) continue;
+            const near = Math.min(...def.sketches.map((s) => Math.hypot(s.at[0] - x, s.at[2] - z)));
+            expect(near, `${t.id} at ${x},${z}`).toBeLessThanOrEqual(reach);
+          }
+      }
+    }
+  });
   it('page 1 bridge spans the chasm once printed', () => {
     const d = buildLevelData(LEVEL1);
     expect(d.collision.walkable(0, -58)).toBe(false);

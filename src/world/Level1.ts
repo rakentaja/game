@@ -68,7 +68,7 @@ export const LEVEL1: LevelDef = {
     { id: 'p1_hint_bolt', rect: [-6, -33, 1, -29], action: { type: 'tutorial', hint: 'bolt' } },
     { id: 'p1_bridge', rect: [-5, -49, 2, -45], action: { type: 'checkpoint' } },
     { id: 'p1_music_calm', rect: [-6, -46, 2, -43], action: { type: 'music', layer: 'combat', level: 0 } },
-    { id: 'p1_hint_print', rect: [-3, -53, 3, -50], action: { type: 'tutorial', hint: 'print' } },
+    { id: 'p1_hint_print', rect: [-3, -54.5, 3, -52.5], action: { type: 'tutorial', hint: 'print' } },
     { id: 'p1_end', rect: [-4, -111, 4, -104], action: { type: 'pageEnd' } },
   ],
   props: [
