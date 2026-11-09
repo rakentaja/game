@@ -106,7 +106,22 @@ export class PaperTear {
     return this.seed / 2147483647;
   }
 
-  burst(x: number, y: number, z: number, count: number, speed: number, life: number, size = 0.16): void {
+  /**
+   * Spray `count` shards. Optional (dirX, dirZ, bias 0..1) throws them along a direction (a bolt
+   * tearing through the paper) instead of evenly around.
+   */
+  burst(
+    x: number,
+    y: number,
+    z: number,
+    count: number,
+    speed: number,
+    life: number,
+    size = 0.16,
+    dirX = 0,
+    dirZ = 0,
+    bias = 0,
+  ): void {
     for (let n = 0; n < count; n++) {
       const i = this.next;
       this.next = (this.next + 1) % this.pool;
@@ -116,9 +131,9 @@ export class PaperTear {
       this.pos[i * 3] = x;
       this.pos[i * 3 + 1] = y;
       this.pos[i * 3 + 2] = z;
-      this.vel[i * 3] = Math.cos(a) * sp;
+      this.vel[i * 3] = Math.cos(a) * sp * (1 - bias) + dirX * sp * bias * 1.6;
       this.vel[i * 3 + 1] = up * sp * 1.2;
-      this.vel[i * 3 + 2] = Math.sin(a) * sp;
+      this.vel[i * 3 + 2] = Math.sin(a) * sp * (1 - bias) + dirZ * sp * bias * 1.6;
       for (let k = 0; k < 3; k++) {
         this.rot[i * 3 + k] = this.rnd() * 6.28;
         this.spin[i * 3 + k] = (this.rnd() - 0.5) * 14;

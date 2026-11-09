@@ -74,6 +74,8 @@ export interface InputState {
   dashPressed: boolean;
   dashDir: THREE.Vector2;
   pausePressed: boolean;
+  /** Two-finger tap / F / gamepad Y: snuff the crystal to 0 m (Snuff & Flare). Optional, edge. */
+  snuffPressed?: boolean;
   /** Last device used, for prompt icons. */
   device: 'touch' | 'keyboard' | 'gamepad';
 }
@@ -205,6 +207,8 @@ export interface Damageable {
   /** True while the target is winding up / telegraphing an attack (Close-Up Crits). Optional. */
   readonly attacking?: boolean;
   hit(amount: number, from: THREE.Vector3): void;
+  /** Optional: freeze the target's AI for `seconds` (Snuff & Flare, Frame Lasso). */
+  stun?(seconds: number): void;
 }
 
 export interface EnemyAPI extends Damageable {
@@ -374,6 +378,9 @@ export interface RunStats {
   boltsHit: number;
   /** Best panel-cut moment snapshot (data URL) for the cover. */
   bestPanel: string | null;
+  /** Editor's Red Pen: total style points this run, and the best grade reached. Optional. */
+  styleScore?: number;
+  styleGrade?: 'D' | 'C' | 'B' | 'A' | 'S' | 'P';
 }
 
 // ───────────────────────────── Game context ─────────────────────────────

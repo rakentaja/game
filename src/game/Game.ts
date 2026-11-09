@@ -31,8 +31,10 @@ import { InkRenderer, installRender, RevealSystem } from '../render';
 import { type Combat, installCombat } from '../systems/combat';
 import { InkEnergy, type InkPickups, installInkPickups } from '../systems/ink-energy';
 import { Spawner } from '../systems/spawner';
+import { installStyle, type StyleSystem } from '../systems/style';
 import { createTargets } from '../systems/targets';
 import { install as installUI, type UI } from '../ui';
+import { MarginNotes } from '../ui/hud/margin';
 import { loadAsset, preload } from '../world/assets';
 import { type CameraRig, installCamera } from '../world/camera';
 import { installLevel, type LevelRuntime } from '../world/install';
@@ -89,6 +91,8 @@ export class Game {
   private enemies!: EnemySystem;
   private enemyGfx!: EnemyRenderer;
   private spawner!: Spawner;
+  private style!: StyleSystem;
+  private margin: MarginNotes | null = null;
   private level: LevelRuntime | null = null;
   private editor: Editor | null = null;
   private bot: AutoplayBot | null = null;
@@ -198,6 +202,16 @@ export class Game {
     });
     this.render.scene.add(this.enemyGfx.root);
     this.spawner = new Spawner(ctx.events, this.enemies);
+    this.combat.projectiles = this.enemies.projectiles;
+    this.style = installStyle(ctx);
+    this.margin = new MarginNotes(
+      ctx.events,
+      () => ctx.t,
+      () => ctx.settings.reduceMotion,
+    );
+    (document.getElementById('ui-root') ?? document.getElementById('app') ?? document.body).append(
+      this.margin.el,
+    );
     this.wireEvents();
     this.player.object.visible = false;
 
@@ -215,6 +229,7 @@ export class Game {
     this.mode = 'title';
     this.setPaused(false);
     this.ui.hideHud();
+    this.margin?.setVisible(false);
     this.teardownPage();
     this.page = null;
     // a live, empty first page behind the title
@@ -235,6 +250,7 @@ export class Game {
   private async newRun(page: PageId, checkpoint?: string): Promise<void> {
     void this.ctx.audio.unlock().catch(() => {});
     Object.assign(this.ctx.stats, freshStats());
+    this.style?.reset();
     this.energy.add(TUNING.energy.max);
     await this.startPage(page, checkpoint);
   }
@@ -270,6 +286,7 @@ export class Game {
       if (this.editor) attachEditorBot(this.bot, this.editor, this.ctx, this.rig);
     }
     this.ui.showHud();
+    this.margin?.setVisible(true);
     void this.ui.titleCard(page);
   }
 
@@ -312,6 +329,7 @@ export class Game {
     this.player.setControllable(false);
     this.ctx.input.setEnabled(false);
     this.ui.hideHud();
+    this.margin?.setVisible(false);
     const time = this.ctx.stats.timeS;
     const best = this.saveData.bestTimeS;
     this.saveData = {
@@ -402,6 +420,7 @@ export class Game {
     ctx.input.poll();
     this.player.step(dt);
     this.combat.step(dt);
+    this.style.step(dt);
     this.pickups.step(dt, this.player, (n) => this.energy.add(n));
     this.spawner.step(dt);
     this.enemies.step(dt);
@@ -436,7 +455,9 @@ export class Game {
       this.render.camera.getWorldDirection(this.listenerFwd);
       ctx.audio.setListener(this.render.camera.position, this.listenerFwd);
     }
-    this.fx.update(frameDt);
+    // FX advance through render.onFrame (inside render.render); calling fx.update here as well
+    // ran every hit-stop / slow-mo clock at double speed.
+    this.margin?.update(frameDt);
     this.ui.update(frameDt);
     this.render.render(frameDt);
     if (this.snapshotPending > 0 && --this.snapshotPending === 0) {

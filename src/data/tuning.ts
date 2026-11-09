@@ -287,6 +287,59 @@ export const TUNING = {
     railBlendBack: 0.6,
   },
   haptics: { tap: 8, dash: 18, crystal: 6, hurt: 45, crit: 30, fizzle: 4 },
+  /** Player workstream, idea-ledger wave 1: juice, close-up crits, snuff/flare, nib, parry, lasso, rhythm, style. */
+  combatPlus: {
+    /** Hit-stop (s) by blow weight. */
+    hitStop: { hit: 0.05, kill: 0.12, crit: 0.2 },
+    /** Paper-white impact starburst: min seconds between flashes (keeps it under 3 Hz). */
+    flashMinGap: 0.34,
+    flashSize: 1.6,
+    /** Kill chain: kills within `chainWindow` s of each other raise the hit sfx a semitone each. */
+    chainWindow: 1.5,
+    chainMaxSemitones: 12,
+    /** Bolt trail width multiplier added per chained kill (capped at trailWidthMax). */
+    trailWidthPerChain: 0.14,
+    trailWidthMax: 2.2,
+    /** Knockback: hits are reported as coming from this far behind the target along the bolt. */
+    knockbackFrom: 1.2,
+    /** "Thock" vibration on kill (ms). */
+    thockMs: 22,
+    /** Close-Up Crits: min seconds between crit panel cuts; telegraph grace after the windup. */
+    critMinGap: 3,
+    telegraphGrace: 0.15,
+    /** Auto-aim distance multiplier for attacking / marked targets (lower = preferred). */
+    attackAimBias: 0.5,
+    markedAimBias: 0.7,
+    snuff: { flareTime: 0.15, stunTime: 1.5, markTime: 4 },
+    nib: { damage: 1, reach: 0.35 },
+    parry: { window: 0.15, slowScale: 0.5, slowTime: 1.2, refund: 10, probe: 0.45, cooldown: 3 },
+    lasso: {
+      life: 4,
+      closeDist: 1,
+      minArea: 2.5,
+      damage: 2,
+      maxPoints: 32,
+      minSpacing: 0.35,
+      cooldown: 1.5,
+    },
+    /** Ink Rhythm: on-beat bolts are free and this much bigger. */
+    beatBoltScale: 1.45,
+    style: {
+      /** Points per action at full freshness. */
+      points: { bolt: 60, crit: 90, nib: 80, lasso: 160, parry: 130, flare: 110, onBeat: 35 },
+      /** Freshness multiplier applied to an action each time it is used; recovers per second. */
+      staleMul: 0.62,
+      freshRegen: 0.18,
+      minFresh: 0.15,
+      /** Score lost per second (scaled up with the grade, so P is hard to hold). */
+      decayPerSec: 22,
+      decayPerGrade: 0.35,
+      damagePenalty: 220,
+      max: 1300,
+      /** Score needed for D, C, B, A, S, P. */
+      grades: [0, 120, 280, 480, 720, 1000],
+    },
+  },
   panelCut: {
     duration: 0.6,
     panels: 3,

@@ -66,6 +66,13 @@ export class ScreenShake {
 export class TimeFreeze {
   /** Freezes overlap (panel cut + hit-stop); time resumes only when the last one releases. */
   private static holders = 0;
+  /** Scale restored when the last freeze releases (SlowMo lowers it). */
+  static base = 1;
+
+  /** Any freeze currently holding time at 0. */
+  static get held(): boolean {
+    return TimeFreeze.holders > 0;
+  }
   remaining = 0;
   private frozen = false;
 
@@ -86,11 +93,46 @@ export class TimeFreeze {
       this.frozen = false;
       this.remaining = 0;
       TimeFreeze.holders = Math.max(0, TimeFreeze.holders - 1);
-      if (TimeFreeze.holders === 0) time.scale = 1;
+      if (TimeFreeze.holders === 0) time.scale = TimeFreeze.base;
     }
   }
 
   get active(): boolean {
     return this.frozen;
+  }
+}
+
+/**
+ * Real-time slow motion (Ink Parry "Blot Out"): lowers the scale freezes restore to, and eases
+ * back to 1 over the last 25% of the window. Never fights an active freeze.
+ */
+export class SlowMo {
+  remaining = 0;
+  private total = 0;
+  private scale = 1;
+
+  start(scale: number, seconds: number, time: { scale: number }): void {
+    if (seconds <= 0) return;
+    this.scale = Math.max(0.05, Math.min(1, scale));
+    this.total = seconds;
+    this.remaining = seconds;
+    this.apply(time);
+  }
+
+  update(realDt: number, time: { scale: number }): void {
+    if (this.remaining <= 0) return;
+    this.remaining = Math.max(0, this.remaining - realDt);
+    this.apply(time);
+  }
+
+  get active(): boolean {
+    return this.remaining > 0;
+  }
+
+  private apply(time: { scale: number }): void {
+    const k = this.total > 0 ? this.remaining / (this.total * 0.25) : 0;
+    const s = this.remaining <= 0 ? 1 : this.scale + (1 - this.scale) * (1 - Math.min(1, k));
+    TimeFreeze.base = s;
+    if (!TimeFreeze.held) time.scale = s;
   }
 }

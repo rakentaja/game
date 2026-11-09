@@ -42,7 +42,13 @@ interface ActionSlot {
   x: number;
   y: number;
   cls: GestureClassifier;
+  /** Part of a two-finger tap (Snuff): its tap snuffs instead of firing a bolt. */
+  pair: number;
+  downAt: number;
 }
+
+/** Two action-side fingers landing within this many ms of each other form a two-finger tap. */
+const PAIR_MS = 140;
 
 export class Input implements InputAPI {
   readonly state: InputState = {
@@ -52,6 +58,7 @@ export class Input implements InputAPI {
     dashPressed: false,
     dashDir: new THREE.Vector2(),
     pausePressed: false,
+    snuffPressed: false,
     device: 'touch',
   };
 
@@ -71,6 +78,9 @@ export class Input implements InputAPI {
   private boltLatch = false;
   private dashLatch = false;
   private pauseLatch = false;
+  private snuffLatch = false;
+  private pairSeq = 0;
+  private pairDone = 0;
   private dashX = 0;
   private dashY = 0;
   private mouseCrystal = false;
@@ -89,7 +99,14 @@ export class Input implements InputAPI {
     const overlayParent = opts.overlay === undefined ? this.el.parentElement : opts.overlay;
     this.visuals = overlayParent ? new TouchVisuals(overlayParent, g.joyRadiusPx) : null;
     for (let i = 0; i < MAX_ACTION; i++) {
-      const slot: ActionSlot = { id: -1, x: 0, y: 0, cls: null as unknown as GestureClassifier };
+      const slot: ActionSlot = {
+        id: -1,
+        x: 0,
+        y: 0,
+        cls: null as unknown as GestureClassifier,
+        pair: 0,
+        downAt: 0,
+      };
       slot.cls = new GestureClassifier(TUNING.gesture, (k, dx, dy) => this.onAction(slot, i, k, dx, dy));
       this.slots.push(slot);
     }
@@ -115,11 +132,12 @@ export class Input implements InputAPI {
     s.boltPressed = false;
     s.dashPressed = false;
     s.pausePressed = false;
+    s.snuffPressed = false;
     if (!this.enabled) {
       // Pause stays live so Esc / Start can resume.
       this.pollPad();
       s.pausePressed = this.pauseLatch;
-      this.boltLatch = this.dashLatch = this.pauseLatch = false;
+      this.boltLatch = this.dashLatch = this.pauseLatch = this.snuffLatch = false;
       s.move.set(0, 0);
       s.crystalHeld = false;
       return;
@@ -149,13 +167,14 @@ export class Input implements InputAPI {
 
     if (this.boltLatch) s.boltPressed = true;
     if (this.pauseLatch) s.pausePressed = true;
+    if (this.snuffLatch) s.snuffPressed = true;
     if (this.dashLatch) {
       s.dashPressed = true;
       if (this.dashX || this.dashY) s.dashDir.set(this.dashX, this.dashY);
       else if (s.move.lengthSq() > 0.01) s.dashDir.copy(s.move).normalize();
       else s.dashDir.set(0, 0);
     }
-    this.boltLatch = this.dashLatch = this.pauseLatch = false;
+    this.boltLatch = this.dashLatch = this.pauseLatch = this.snuffLatch = false;
     this.dashX = this.dashY = 0;
   }
 
@@ -198,6 +217,10 @@ export class Input implements InputAPI {
 
   pressPause(): void {
     this.pauseLatch = true;
+  }
+
+  pressSnuff(): void {
+    this.snuffLatch = true;
   }
 
   // ───────── Pointer ─────────
@@ -256,10 +279,20 @@ export class Input implements InputAPI {
     const slotIdx = this.slots.findIndex((s) => s.id < 0);
     if (slotIdx < 0) return;
     const sl = this.slots[slotIdx]!;
+    const t = e.timeStamp || performance.now();
     sl.id = e.pointerId;
     sl.x = x;
     sl.y = y;
-    sl.cls.down(e.timeStamp || performance.now(), x, y);
+    sl.pair = 0;
+    sl.downAt = t;
+    // second finger landing right after a first, still-pending one → two-finger tap candidate
+    for (const o of this.slots) {
+      if (o === sl || o.id < 0 || o.cls.phase !== 'pending' || t - o.downAt > PAIR_MS) continue;
+      const id = o.pair || ++this.pairSeq;
+      o.pair = sl.pair = id;
+      break;
+    }
+    sl.cls.down(t, x, y);
   };
 
   private onMove = (e: PointerEvent): void => {
@@ -336,8 +369,17 @@ export class Input implements InputAPI {
     const g = TUNING.haptics;
     switch (kind) {
       case 'tap':
-        this.boltLatch = true;
         this.visuals?.tap(sl.x, sl.y);
+        if (sl.pair) {
+          // one snuff per pair; the partner's tap is swallowed
+          if (this.pairDone !== sl.pair) {
+            this.pairDone = sl.pair;
+            this.snuffLatch = true;
+            haptics.pulse(g.crystal);
+          }
+          break;
+        }
+        this.boltLatch = true;
         haptics.pulse(g.tap);
         break;
       case 'swipe':
@@ -372,7 +414,7 @@ export class Input implements InputAPI {
     }
     this.mouseCrystal = false;
     this.keys.clear();
-    this.boltLatch = this.dashLatch = this.pauseLatch = false;
+    this.boltLatch = this.dashLatch = this.pauseLatch = this.snuffLatch = false;
     this.visuals?.clear();
     this.state.move.set(0, 0);
     this.state.crystalHeld = false;
@@ -401,6 +443,7 @@ export class Input implements InputAPI {
     this.keys.add(c);
     if (c === 'Space' || c === 'KeyK') this.dashLatch = true;
     else if (c === 'KeyJ' || c === 'Enter') this.boltLatch = true;
+    else if (c === 'KeyF') this.snuffLatch = true;
   };
 
   private onKeyUp = (e: KeyboardEvent): void => {
@@ -459,6 +502,7 @@ export class Input implements InputAPI {
     const boltX = edge(2);
     const boltB = edge(1);
     if (boltX || boltB) this.boltLatch = true;
+    if (edge(3)) this.snuffLatch = true;
     if (edge(9)) this.pauseLatch = true;
     edge(5);
     edge(6);

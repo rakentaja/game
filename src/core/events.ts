@@ -11,7 +11,15 @@ export interface GameEvents {
   'player:dash': { from: [number, number, number]; to: [number, number, number] };
   'crystal:hold': { held: boolean };
   'bolt:fire': { targetId: number | null };
-  'bolt:hit': { enemyId: number; position: [number, number, number]; critical: boolean };
+  /** `kill`/`chain`/`dir` (bolt XZ direction) are optional extras for FX / style. */
+  'bolt:hit': {
+    enemyId: number;
+    position: [number, number, number];
+    critical: boolean;
+    kill?: boolean;
+    chain?: number;
+    dir?: [number, number];
+  };
   'enemy:spawn': { id: number; kind: EnemyKind };
   'enemy:revealed': { id: number; kind: EnemyKind; first: boolean };
   'enemy:died': { id: number; kind: EnemyKind; position: [number, number, number] };
@@ -77,6 +85,8 @@ export interface GameEvents {
   'boss:rewrite': { verb: PlayerVerb; cut: boolean };
   /** [boss] The Editor erased / restored a music stem (audio reacts). */
   'boss:eraseStem': { stem: number; erased: boolean };
+  /** [player] Dash-Strike Nib: dashing through a revealed enemy hit it. */
+  'combat:nib': { id: number; kill: boolean };
   /** [enemies] Encounter director intensity 0..1 and beat. */
   'director:phase': { phase: 'build' | 'peak' | 'relax'; intensity: number };
 }
