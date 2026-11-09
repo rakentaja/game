@@ -122,12 +122,22 @@ export interface GameEvents {
   /** [heroes] A page perk was chosen. */
   'hero:perk': { pid: PlayerSlot; hero: HeroId; perk: string };
   /** [heroes/coop] A combo between two heroes triggered. */
-  'hero:combo': { combo: string; position: [number, number, number] };
+  'hero:combo': {
+    combo: string;
+    position: [number, number, number];
+    /** Variant (combos.ts ComboHit.kind), when known. */
+    kind?: string;
+  };
   /**
    * [heroes] A hero printed a sketch its own way (Penciller traced its outline). Game prints the
    * nearest unprinted, enabled sketch within `radius` of (x, z).
    */
   'hero:print': { pid: PlayerSlot; x: number; z: number; radius: number };
+  /**
+   * [heroes → enemies] A decoy draws aggro at (x, z) for `seconds` (Colorist misregistration
+   * dash). Emitted only where world effects resolve (host / solo); EnemySystem targeting reads it.
+   */
+  'hero:lure': { x: number; z: number; seconds: number };
   /** [coop] A player went down (co-op) / was reprinted by their partner. */
   'player:downed': { pid: PlayerSlot; position: [number, number, number] };
   'player:revived': { pid: PlayerSlot };

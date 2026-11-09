@@ -239,6 +239,8 @@ export class Game {
       crystalPos: () => this.player.crystalPos,
       inkContext: { shared: this.render.shared, reveal: ctx.reveal.uniforms },
       label: (k) => ctx.t(k),
+      // the Penciller sees unlit ghosts as faint pencil silhouettes (on his own screen only)
+      sight: () => this.player.kit.id === 'penciller' || (this.coop?.sight?.() ?? false),
     });
     this.render.scene.add(this.enemyGfx.root);
     this.spawner = new Spawner(ctx.events, this.enemies);
@@ -317,6 +319,7 @@ export class Game {
     Object.assign(this.ctx.stats, freshStats());
     this.style?.reset();
     this.meta.startRun(dailyDate ? 'daily' : 'main', dailyDate);
+    await this.meta.ready();
     await this.heroes.prepare();
     this.energy.add(this.energy.max);
     await this.startPage(page, checkpoint);
@@ -339,6 +342,7 @@ export class Game {
     this.mode = 'playing';
     if (page === 'boss') this.setupBoss(def.anchors?.boss, await loadBoss());
     else if (page === 3) void loadBoss();
+    if (page === 'boss') void this.ui.loadEndScreens();
     this.ctx.events.emit('state:change', { from: 'boot', to: page === 'boss' ? 'boss' : 'playing' });
     this.coop?.onPageStart(page);
     if (FLAGS.autoplay) {
@@ -440,6 +444,7 @@ export class Game {
       endCoop: () => this.endNetCoop(),
       stepSim: (dt) => this.step(dt),
       lastFrameAt: () => this.lastFrameAt,
+      heroes: this.heroes,
     };
   }
 

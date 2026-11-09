@@ -38,6 +38,8 @@ export function registered(m: Marks, now: number, window: number, need = 3): boo
 
 export interface Flat {
   active: boolean;
+  /** This machine resolves the flat's ghost effects (slow / burn). */
+  world: boolean;
   x: number;
   z: number;
   r: number;
@@ -68,7 +70,14 @@ export class ColoristKit extends KitBase {
     world: boolean;
     disc: number;
   }[] = [];
-  private decoys: { mesh: THREE.Mesh | null; x: number; z: number; until: number; hit: Set<number> }[] = [];
+  private decoys: {
+    mesh: THREE.Mesh | null;
+    x: number;
+    z: number;
+    until: number;
+    hit: Set<number>;
+    world: boolean;
+  }[] = [];
   private cd = 0;
   private time = 0;
   private holdT = 0;
@@ -86,7 +95,17 @@ export class ColoristKit extends KitBase {
     m.radiusIdle = this.haloRadius();
     if (!this.flats.length)
       for (let i = 0; i < this.host.tuning.heroes.colorist.bucket.max; i++)
-        this.flats.push({ active: false, x: 0, z: 0, r: 0, col: 0, until: 0, disc: -1, src: -1 });
+        this.flats.push({
+          active: false,
+          world: false,
+          x: 0,
+          z: 0,
+          r: 0,
+          col: 0,
+          until: 0,
+          disc: -1,
+          src: -1,
+        });
     if (!this.sprays.length)
       for (let i = 0; i < MAX_SPRAYS; i++)
         this.sprays.push({
@@ -102,7 +121,7 @@ export class ColoristKit extends KitBase {
         });
     if (!this.decoys.length)
       for (let i = 0; i < this.host.tuning.heroes.colorist.decoys.count; i++)
-        this.decoys.push({ mesh: null, x: 0, z: 0, until: -1, hit: new Set() });
+        this.decoys.push({ mesh: null, x: 0, z: 0, until: -1, hit: new Set(), world: false });
     if (!this.offs.length)
       this.offs.push(
         this.host.events.on('enemy:died', (e) =>
@@ -211,7 +230,7 @@ export class ColoristKit extends KitBase {
       s.tz = to[1]!;
       s.tid = Number(data.tid ?? -1);
       s.col = Number(data.col) % 3;
-      s.world = world;
+      s.world = this.resolves(world);
       const v = this.vfx();
       s.disc = v ? v.discs.spawn(s.x, H.position.y + 1, s.z, 0.35, SLOT[SPRAY[s.col]!], 0, 2) : -1;
       H.sfx('scribble_fire', 0.6, 1.3 + s.col * 0.15);
@@ -326,7 +345,8 @@ export class ColoristKit extends KitBase {
         bonus: true,
       });
     }
-    if (this.flatAt(x, z) >= 0) H.addEnergy(K.halftoneInk);
+    // Halftone refunds the Colorist's own ink: only her own (local) kit pays it
+    if (!this.remote && this.flatAt(x, z) >= 0) H.addEnergy(K.halftoneInk);
     this.marks.delete(id);
   }
 
@@ -342,6 +362,7 @@ export class ColoristKit extends KitBase {
     if (f.src >= 0) H.reveal.removeSource(f.src);
     if (f.disc >= 0) this.fx?.discs.kill(f.disc);
     f.active = true;
+    f.world = this.resolves(world);
     f.x = x;
     f.z = z;
     f.r = r;
@@ -349,7 +370,8 @@ export class ColoristKit extends KitBase {
     f.until = this.time + life;
     const v = this.vfx();
     f.disc = v ? v.discs.spawn(x, H.collision.groundHeight(x, z), z, r, SLOT[SPRAY[col]!], 1, life) : -1;
-    f.src = world ? H.reveal.addSource(x, z, r, life) : -1;
+    // the flat keeps its area inked on every machine (reveal is per machine)
+    f.src = H.reveal.addSource(x, z, r, life);
     H.sfx('sketch_done', 0.5, 1.4, [x, H.position.y, z]);
     return f;
   }
@@ -368,12 +390,13 @@ export class ColoristKit extends KitBase {
         f.src = -1;
         continue;
       }
-      if (f.col === 2) {
+      if (f.col === 2 && !this.remote) {
+        // gold heals the Colorist's own wizard (her own machine)
         const dx = H.position.x - f.x;
         const dz = H.position.z - f.z;
         if (dx * dx + dz * dz <= f.r * f.r) onGold = true;
       }
-      if (!tick || f.col === 2) continue;
+      if (!tick || f.col === 2 || !f.world) continue;
       inRadius(H, f.x, f.z, f.r, (t) => {
         if ((t as Ghost).kind === undefined) return;
         if (f.col === 0) t.stun?.(0.3);
@@ -404,12 +427,15 @@ export class ColoristKit extends KitBase {
       d.z = fz + pz * o - dz * 0.3 * i;
       d.until = this.time + D.life;
       d.hit.clear();
+      d.world = this.resolves(world);
+      // decoys draw aggro: enemy targeting reads them while they stand (host / solo only)
+      if (d.world) H.events.emit('hero:lure', { x: d.x, z: d.z, seconds: D.life });
       if (d.mesh) {
         d.mesh.visible = true;
         d.mesh.position.set(d.x, H.collision.groundHeight(d.x, d.z) + 0.85, d.z);
       }
     }
-    if (world) H.reveal.addSource(fx, fz, 1.4, D.life);
+    H.reveal.addSource(fx, fz, 1.4, D.life);
     H.sfx('dash', 0.5, 1.3);
   }
 
@@ -423,6 +449,7 @@ export class ColoristKit extends KitBase {
         continue;
       }
       // ghosts that reach a decoy swing at paper: a short confusion
+      if (!d.world) continue;
       inRadius(H, d.x, d.z, 0.9, (t) => {
         if ((t as Ghost).kind === undefined || d.hit.has(t.id)) return;
         d.hit.add(t.id);
@@ -452,7 +479,7 @@ export class ColoristKit extends KitBase {
       focus: [H.position.x, H.position.y + 1, H.position.z],
       reason: 'ultimate',
     });
-    if (!world) return;
+    if (!this.resolves(world)) return;
     for (const f of this.flats) {
       if (!f.active) continue;
       inRadius(H, f.x, f.z, f.r, (t) => {

@@ -43,7 +43,10 @@ export class HeroRuntime {
   private offered = new Set<PageId>();
   private offs: (() => void)[] = [];
   private loading: Promise<void> | null = null;
-  private combosOff: (() => void) | null = null;
+  /** Hero the co-op lobby picked for this machine's wizard (wins over `?hero=` / storage). */
+  private coopHero: HeroId | null = null;
+  /** Extra wizards on this machine (local 2P): they get their own perk card after player 1. */
+  private readonly locals: Player[] = [];
 
   constructor(
     private ctx: GameContext,
@@ -53,36 +56,41 @@ export class HeroRuntime {
     const ev: EventBus<GameEvents> = ctx.events;
     this.offs.push(
       ev.on('splash:changed', (e) => {
-        if (e.pid === 0) this.hud?.setSplash(e.value);
+        if (e.pid === this.player.slot) this.hud?.setSplash(e.value);
       }),
-      // co-op: the lobby decided our hero
+      // co-op: the lobby decided our hero (pair combos are installed by the co-op runtime)
       ev.on('coop:start', (e) => {
         const h = e.heroes[e.slot];
         if (isHeroId(h)) {
           rememberHero(h);
+          this.coopHero = h;
           void this.prepare(h);
         }
-        // pair combos only exist with two heroes: detection is a lazy chunk
-        if (!this.combosOff)
-          void import('./combos').then((m) => {
-            this.combosOff ??= m.installCombos(
-              ev,
-              () => ctx.time.simTime,
-              (x, z) => ctx.collision.groundHeight(x, z),
-            );
-          });
       }),
     );
   }
 
+  /** Another wizard on this machine (local 2P player 2): per-player perk cards. */
+  addLocal(p: Player): () => void {
+    this.locals.push(p);
+    return () => {
+      const i = this.locals.indexOf(p);
+      if (i >= 0) this.locals.splice(i, 1);
+    };
+  }
+
   /** Load + install the chosen hero kit (resets perks and the Splash meter: a fresh run). */
-  prepare(hero: HeroId = selectedHero()): Promise<void> {
+  prepare(hero: HeroId = this.coopHero ?? selectedHero()): Promise<void> {
     this.loading = (async () => {
       const make = await loadKit(hero);
       const p = this.player;
       if (p.kit.id !== hero) p.setKit(make());
       p.kit.resetPerks();
       p.splash.reset(0);
+      for (const q of this.locals) {
+        q.kit.resetPerks();
+        q.splash.reset(0);
+      }
       this.hero = p.kit.id;
       this.offered.clear();
       this.hud?.setHero(this.hero);
@@ -108,15 +116,18 @@ export class HeroRuntime {
 
   private async offerPerk(page: PageId): Promise<void> {
     if (this.offered.has(page)) return;
-    const opts = perkOptions(this.hero, page);
-    if (!opts || !this.hud) return;
     this.offered.add(page);
-    const hero = this.hero;
-    const pick = await this.hud.perk(hero, opts, FLAGS.autoplay ? 0.6 : 12);
-    const kit = this.player.kit;
-    if (kit.id !== hero || kit.perks.has(pick)) return;
-    kit.applyPerk(pick);
-    this.ctx.events.emit('hero:perk', { pid: 0, hero, perk: pick });
+    for (const p of [this.player, ...this.locals]) {
+      const hero = p.kit.id;
+      const opts = perkOptions(hero, page);
+      if (!opts || !this.hud) continue;
+      const pick = await this.hud.perk(hero, opts, FLAGS.autoplay ? 0.6 : 12);
+      const kit = p.kit;
+      if (kit.id !== hero || kit.perks.has(pick)) continue;
+      kit.applyPerk(pick);
+      // co-op replicates it so the partner's puppet of this kit plays the perk too
+      this.ctx.events.emit('hero:perk', { pid: p.slot, hero, perk: pick });
+    }
   }
 
   private ensureHud(): Promise<HeroHudAPI> {
@@ -152,7 +163,6 @@ export class HeroRuntime {
   }
 
   dispose(): void {
-    this.combosOff?.();
     for (const o of this.offs) o();
     this.offs.length = 0;
     this.hud?.dispose();

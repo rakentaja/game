@@ -704,7 +704,7 @@ export const TUNING = {
   },
   /** Heroes workstream (wave 2): hero kits, Splash meter, perks, combos. Seconds / metres. */
   heroes: {
-    splash: { perKill: 0.06, perChain: 0.02, perPrint: 0.15, perCombo: 0.12 },
+    splash: { perKill: 0.06, perChain: 0.02, perPrint: 0.15, perCombo: 0.12, comboBoostS: 6 },
     /** Non-Inker heroes: holding near an unprinted sketch / weak point powers a print light. */
     printLight: { reach: 7.5 },
     inker: {
@@ -766,7 +766,34 @@ export const TUNING = {
       overspray: 1.5,
       fourColor: 1.5,
     },
-    combos: { ttl: 3, wordRadius: 1, grindDist: 1.2, maxLoopPoints: 96 },
+    combos: {
+      ttl: 3,
+      wordRadius: 1,
+      grindDist: 1.2,
+      maxLoopPoints: 96,
+      /** Gameplay effects (wave 3, host-resolved online). Radii m, times s, damage in bolt units. */
+      fx: {
+        /** Ink the Pencils: the loop prints as a solid ink panel (revealed + slowed inside). */
+        panel: { life: 8, minR: 2, maxR: 6.5, slow: 2.5 },
+        /** … an open line prints as an inked bridge strip (ghosts on it stumble). */
+        bridge: { life: 8, width: 1.3, stun: 1, step: 1.6 },
+        /** Sound & Light: a bolt through a flying word splits into one bolt per letter. */
+        split: { letters: 5, range: 7, damage: 1 },
+        /** … a word landing inside the ink bursts into a 3 m reveal. */
+        burst: { radius: 3, life: 4, damage: 1 },
+        /** Overprint: damage ×mul where a colour flat overlaps the ink. */
+        double: { mul: 2, life: 6 },
+        /** … a fill on the 7 m circle keeps it inked; ghosts inside freeze briefly. */
+        freeze: { life: 10, stun: 1.5 },
+        /** Speed Lines: a dash along a ruler line grinds it, inking it and firing letters out. */
+        grind: { life: 5, radius: 1.6, damage: 2, step: 1.6 },
+        /** Coloring Book: a sprayed loop fills with that colour (big reveal + colour effect). */
+        fill: { life: 10, minR: 2, maxR: 6.5, slow: 2, burn: 3, ink: 6 },
+        /** Chromatic Chorus: a coloured word (per hit), then the 3-colour blast. */
+        color: { radius: 1.8, damage: 1, slow: 1 },
+        blast: { radius: 4.5, damage: 4, life: 4 },
+      },
+    },
   },
   /** Audio workstream (Idea Ledger wave 1). Times in seconds unless the name says ms. */
   audio: {

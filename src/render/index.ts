@@ -26,6 +26,11 @@ export { RevealSystem } from './reveal/RevealSystem';
 
 /** Display text for an onomatopoeia key: i18n `fx.<key>` if present, else built-in, else KEY!. */
 export function wordFor(ctx: Pick<GameContext, 't'> | null, key: string): string {
+  // a full i18n key (e.g. lazily loaded `heroes.combo.overprint`)
+  if (key.includes('.')) {
+    const t0 = ctx?.t(key);
+    if (t0 && t0 !== key) return t0;
+  }
   const k = `fx.${key}`;
   const t = ctx?.t(k);
   if (t && t !== k) return t;

@@ -23,12 +23,14 @@
  */
 import * as THREE from 'three';
 import type { GameEvents } from '../core/events';
-import type { DamageSource, EliteAffix, EnemyKind, PageId, PlayerSlot } from '../core/types';
+import type { DamageSource, EliteAffix, EnemyKind, PageId, PlayerSlot, PlayerVerb } from '../core/types';
 import { PAL } from '../data/palette';
 import type { Editor } from '../entities/Editor/Editor';
 import type { AttackKind, Hand } from '../entities/Editor/fsm';
 import type { Enemy } from '../entities/enemies/Enemy';
 import { ELITE_INDEX, KIND_INDEX } from '../entities/enemies/Enemy';
+import { type ComboHit, type ComboId, installCombos } from '../entities/heroes/combos';
+import type { HeroActionEvent } from '../entities/heroes/HeroKit';
 import type { LoadedCharacter } from '../entities/Player';
 import type { MessageDef } from '../net/codec';
 import { INTERP_DEFAULTS, type InterpSample, SnapshotInterpolator } from '../net/interp';
@@ -38,6 +40,7 @@ import type { RevealSystem } from '../render/reveal/RevealSystem';
 import { AiState } from '../systems/ai/fsm';
 import { PartnerHud } from '../ui/hud/partner';
 import { interceptEmit } from './bus';
+import { ComboEffects } from './combos';
 import { HitHistory } from './history';
 import { levelHooks } from './level';
 import { captureRamps } from './look';
@@ -75,6 +78,7 @@ import {
   MSG_SYNC,
   type PageSave,
   type PStateMsg,
+  REWRITE_VERBS,
   rleDecode,
   rleEncode,
   type SnapMsg,
@@ -145,6 +149,12 @@ export class NetCoop implements CoopSession {
   /** Stats for tests / HUD. */
   readonly stats = { snapsSent: 0, snapsRecv: 0, hitReq: 0, hitOk: 0, hitRejected: 0, refunded: 0 };
   save: PageSave = { page: '1', cp: '', printed: [], spent: [], cleared: [], boss: null };
+  /** Lobby heroes by slot. */
+  readonly heroes: string[];
+  /** Pair-combo effects (host resolves; the guest replays them). */
+  readonly combos: ComboEffects;
+  /** Host: sketch print progress waiting to be replicated (id → t). */
+  private readonly sprog = new Map<string, number>();
 
   private readonly mirror: EnemyMirror;
   private readonly s: NetSession;
@@ -199,12 +209,27 @@ export class NetCoop implements CoopSession {
     this.history = new HitHistory(Math.max(4, Math.ceil(T.coop.net.historyMs / (1000 / T.sim.hz))));
     (ctx.reveal as RevealSystem).setDual(true);
     host.player.slot = this.slot;
+    // the guest's own kit plays its effects; the host's puppet of it resolves the world side
+    host.player.worldAuthority = this.authority;
+    this.heroes = o.heroes.slice();
     captureRamps(host.player.object);
     this.remote = new RemotePlayer(ctx, this.partnerSlot, model, PAL.teal);
     this.remote.hooks = {
       damage: (a, src) => this.push({ k: 'dmg', a, src }),
       grant: (n) => this.push({ k: 'claim', n }),
+      heal: (n) => this.push({ k: 'heal', n }),
     };
+    void this.remote.setHero(this.heroes[this.partnerSlot] ?? 'inker');
+    this.combos = new ComboEffects(ctx, host.enemies);
+    if (this.authority)
+      this.offs.push(
+        installCombos(
+          ctx.events,
+          () => ctx.time.simTime,
+          (x, z) => ctx.collision.groundHeight(x, z),
+          (h) => this.resolveCombo(h),
+        ),
+      );
     const local: Member = {
       api: host.player,
       body: host.player,
@@ -358,9 +383,20 @@ export class NetCoop implements CoopSession {
       this.push({ k: 'dash', ax: e.from[0], az: e.from[2], bx: e.to[0], bz: e.to[2] }),
     );
     on('hero:action', (e) => {
-      if (e.pid === this.slot) this.push({ k: 'hero', p: e });
+      // the payload object is reused by the kit: send a copy
+      if (e.pid === this.slot)
+        this.push({
+          k: 'hero',
+          p: { pid: e.pid, hero: e.hero, action: e.action, data: { ...(e.data ?? {}) } },
+        });
+    });
+    on('hero:perk', (e) => {
+      if (e.pid === this.slot) this.push({ k: 'perk', perk: e.perk });
     });
     if (!this.authority) return;
+    on('sketch:progress', (e) => {
+      if (!e.id.startsWith('editor:')) this.sprog.set(e.id, e.t);
+    });
     const en = this.host.enemies;
     on('enemy:spawn', (e) => {
       const x = en.byId(e.id);
@@ -396,6 +432,14 @@ export class NetCoop implements CoopSession {
   }
 
   private dirtySave = false;
+
+  /** Host: a pair combo completed — resolve it here, then the guest replays its visuals. */
+  private resolveCombo(h: ComboHit): void {
+    this.combos.play(h, true);
+    if (this.solo) return;
+    const at = this.leadAt();
+    this.push({ k: 'combo', c: h.combo, kind: h.kind, x: h.x, z: h.z, col: h.col, r: h.r, seg: h.seg, at });
+  }
 
   /** Host: hook the Editor once it exists (boss page). */
   private hookEditor(ed: Editor): void {
@@ -439,7 +483,7 @@ export class NetCoop implements CoopSession {
     const c = p as GameEvents['fx:panelCut'];
     if (localCut(c.reason)) return false;
     if (!this.authority) return true; // the host sends its own copy
-    const at = this.tick + this.host.ctx.tuning.coop.net.leadTicks;
+    const at = this.leadAt();
     const f: [number, number, number] = [c.focus[0], c.focus[1], c.focus[2]];
     this.push({ k: 'cut', w: c.word, f, r: c.reason, at });
     this.schedule(at, () => this.replayCut(c.word, f, c.reason));
@@ -450,6 +494,18 @@ export class NetCoop implements CoopSession {
     this.filter.bypass(() => this.host.ctx.events.emit('fx:panelCut', { word, focus, reason }));
   }
 
+  /**
+   * Host: when a shared moment plays — `leadTicks` from now, in HOST-CLOCK ms. Both machines run
+   * it when their (clock-synced) `hostNow()` reaches it, so the guest's cut lands on the host's
+   * beat instead of whenever the packet happened to arrive (and a slow host's tick drift doesn't
+   * skew it).
+   */
+  private leadAt(): number {
+    const T = this.host.ctx.tuning;
+    return this.s.hostNow() + (T.coop.net.leadTicks * 1000) / T.sim.hz;
+  }
+
+  /** Run `run` at host-clock ms `at` (see leadAt). */
   private schedule(at: number, run: () => void): void {
     this.sched.push({ at, run });
   }
@@ -532,8 +588,17 @@ export class NetCoop implements CoopSession {
       case 'dash':
         this.rules.partnerDash(this.partnerSlot, e.ax, e.az, e.bx, e.bz);
         return;
-      case 'hero':
-        ctx.events.emit('hero:action', e.p as GameEvents['hero:action']);
+      case 'hero': {
+        const ev = e.p as HeroActionEvent;
+        if (!ev || ev.pid !== this.partnerSlot) return;
+        // the partner's kit plays on its puppet; world effects resolve only on the host
+        this.remote.applyAction(ev, this.authority);
+        // the host's combo detector hears both heroes
+        if (this.authority) ctx.events.emit('hero:action', ev);
+        return;
+      }
+      case 'perk':
+        this.remote.applyPerk(e.perk);
         return;
       case 'down':
       case 'up':
@@ -616,6 +681,33 @@ export class NetCoop implements CoopSession {
         return;
       case 'claim':
         host.energy.add(e.n);
+        return;
+      case 'heal':
+        host.player.host.heal(e.n);
+        return;
+      case 'combo': {
+        const h: ComboHit = {
+          combo: e.c as ComboId,
+          kind: e.kind,
+          x: e.x,
+          z: e.z,
+          col: e.col,
+          r: e.r,
+          seg: e.seg,
+        };
+        // visuals + ink at the host-scheduled tick (the panel cut arrives as its own 'cut')
+        this.schedule(e.at, () => {
+          this.combos.play(h, false, false);
+          ctx.events.emit('hero:combo', {
+            combo: h.combo,
+            kind: h.kind,
+            position: [h.x, ctx.collision.groundHeight(h.x, h.z), h.z],
+          });
+        });
+        return;
+      }
+      case 'sprog':
+        lvl?.sketches.setProgress(e.id, e.t);
         return;
       case 'bossPhase':
         if (ed) {
@@ -738,6 +830,7 @@ export class NetCoop implements CoopSession {
     out.energy = p.energy;
     out.dashSerial = p.dashSerial;
     out.castSerial = this.castSerial;
+    out.splash = p.splash.value;
     return out;
   }
 
@@ -836,6 +929,21 @@ export class NetCoop implements CoopSession {
     }
     b.spread = f.spread;
     b.gutterX = f.gutterX;
+    const rw = f.rewrite;
+    b.rw.verb = rw.verb ? REWRITE_VERBS.indexOf(rw.verb as (typeof REWRITE_VERBS)[number]) : 255;
+    b.rw.cut = rw.cut;
+    b.rw.sketch = rw.sketch;
+    b.rw.drawIn = rw.drawIn;
+    b.rw.print = rw.print;
+    b.rw.x = rw.x;
+    b.rw.y = rw.y;
+    b.rw.z = rw.z;
+    const sm = f.summon;
+    b.sm.active = sm.active;
+    b.sm.t = sm.t;
+    b.sm.x = sm.x;
+    b.sm.z = sm.z;
+    b.sm.kind = KIND_INDEX[sm.kind] ?? 0;
     const s = f.stet;
     Object.assign(b.stet, {
       active: s.active,
@@ -989,6 +1097,24 @@ export class NetCoop implements CoopSession {
     s.held = b.stet.held;
     s.x = b.stet.x;
     s.z = b.stet.z;
+    // rewrite sketch (verb icon drawing in, its print progress) + the left hand's summon drawing
+    const rw = f.rewrite;
+    const v = b.rw.verb;
+    rw.verb = v < REWRITE_VERBS.length ? (REWRITE_VERBS[v] as PlayerVerb) : null;
+    rw.cut = b.rw.cut;
+    rw.sketch = b.rw.sketch;
+    rw.drawIn = b.rw.drawIn;
+    rw.print = b.rw.print;
+    rw.x = b.rw.x;
+    rw.y = b.rw.y;
+    rw.z = b.rw.z;
+    const sm = f.summon;
+    if (b.sm.active && !sm.active) ed.onSummonStart(KINDS[b.sm.kind] ?? 'smudge', b.sm.x, b.sm.z);
+    sm.active = b.sm.active;
+    sm.t = b.sm.t;
+    sm.x = b.sm.x;
+    sm.z = b.sm.z;
+    sm.kind = KINDS[b.sm.kind] ?? 'smudge';
   }
 
   private sendSync(): void {
@@ -1001,7 +1127,7 @@ export class NetCoop implements CoopSession {
     this.enc = new SnapshotEncoder(ENEMY_SCHEMA);
     this.send(
       COOP_MSG.sync,
-      { epoch: this.epoch, tick: this.tick, seed: 0, heroes: ['inker', 'inker'], save: this.save, hist },
+      { epoch: this.epoch, tick: this.tick, seed: 0, heroes: this.heroes, save: this.save, hist },
       true,
     );
   }
@@ -1107,12 +1233,17 @@ export class NetCoop implements CoopSession {
     const ed = this.host.editor();
     if (ed && !ed.coop) this.hookEditor(ed);
     this.rules.step(dt);
+    this.combos.step(dt);
     if (this.authority) {
       const rv = this.host.ctx.reveal as RevealSystem;
       this.supp = this.suppBase > 0.01 ? Math.min(1, rv.targetRadius2 / this.suppBase) : 1;
       this.history.begin(this.tick);
       for (const e of this.host.enemies.pool) if (e.active) this.history.add(e.id, e.alive, e.revealed);
-      this.runDue(this.tick);
+      this.runDue(this.s.hostNow());
+      if (this.sprog.size && this.tick % 6 === 0) {
+        for (const [id, t] of this.sprog) this.push({ k: 'sprog', id, t: Math.round(t * 100) / 100 });
+        this.sprog.clear();
+      }
       if (this.dirtySave) {
         this.dirtySave = false;
         this.refreshSave();
@@ -1122,7 +1253,7 @@ export class NetCoop implements CoopSession {
       if (!this.solo && this.tick % every === 0) this.sendSnap();
     } else {
       this.drainLater();
-      this.runDue(this.estHostTick());
+      this.runDue(this.s.hostNow());
       const every = Math.max(1, Math.round(T.sim.hz / T.coop.net.playerStateHz));
       if (this.tick % every === 0) this.sendPState();
       if (this.hostLostT >= 0) {
@@ -1144,6 +1275,7 @@ export class NetCoop implements CoopSession {
     const host = this.host;
     const cam = host.ctx.render.camera;
     if (!this.solo) this.remote.render(alpha, frameDt, cam);
+    this.combos.frame(frameDt);
     const hud = this.hud;
     if (!hud) return;
     this.stetHint(hud);
@@ -1179,6 +1311,7 @@ export class NetCoop implements CoopSession {
         downed: this.dv,
         strain: this.solo ? 0 : this.rules.strain,
         reduceMotion: host.ctx.settings.reduceMotion,
+        splash: this.remote.state.splash,
       },
       cam,
       r.clientWidth || innerWidth,
@@ -1232,6 +1365,8 @@ export class NetCoop implements CoopSession {
 
   /** Called at the start of every page build and on every checkpoint respawn (both machines). */
   onPageTeardown(): void {
+    this.combos.clear();
+    this.sprog.clear();
     this.bumpEpoch();
   }
 
@@ -1254,7 +1389,7 @@ export class NetCoop implements CoopSession {
     if (this.solo) return false;
     const next = page === 1 ? 2 : page === 2 ? 3 : page === 3 ? 'boss' : null;
     if (next === null) return false;
-    const at = this.tick + this.host.ctx.tuning.coop.net.leadTicks;
+    const at = this.leadAt();
     this.push({ k: 'turn', page: String(next), at });
     this.flush();
     this.schedule(at, () => void this.host.turnTo(next));
@@ -1295,6 +1430,8 @@ export class NetCoop implements CoopSession {
     this.rules.dispose();
     this.router?.dispose();
     this.remote.dispose();
+    this.combos.dispose();
+    this.host.player.worldAuthority = true;
     this.hud?.dispose();
     this.mirror.enable(false);
     const dep = this.host.enemies.deps;

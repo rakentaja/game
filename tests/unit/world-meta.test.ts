@@ -4,16 +4,8 @@ import { RevealSystem } from '../../src/render/reveal/RevealSystem';
 import { LEVEL2 } from '../../src/world/Level2';
 import { LEVEL3 } from '../../src/world/Level3';
 import { CAPTION_LINES, CaptionDirector } from '../../src/world/meta/CaptionDirector';
-import {
-  DAILY_RULES,
-  dailyInfo,
-  dailyLevel,
-  dailySeed,
-  hashString,
-  parseDailyFlag,
-  segmentHitsRect,
-  spawnSlotValidator,
-} from '../../src/world/meta/daily';
+import { DAILY_RULES, dailyInfo, dailySeed, hashString, parseDailyFlag } from '../../src/world/meta/daily';
+import { dailyLevel, segmentHitsRect, spawnSlotValidator } from '../../src/world/meta/daily-level';
 import { decodeSamples, encodeSamples, GhostRecorder, sampleTrack } from '../../src/world/meta/ghost';
 import { MisprintZones } from '../../src/world/meta/misprint';
 import { validateLevel } from '../../src/world/validate';

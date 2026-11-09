@@ -424,8 +424,10 @@ function drawAtlas(cv: HTMLCanvasElement): void {
   }
 }
 
-function atlas(): THREE.CanvasTexture {
+function atlas(): THREE.Texture {
   if (atlasTex) return atlasTex;
+  // headless (co-op sims / tests): a blank texture; nothing is drawn there anyway
+  if (typeof document === 'undefined') return new THREE.Texture();
   const cv = document.createElement('canvas');
   cv.width = cv.height = 512;
   drawAtlas(cv);

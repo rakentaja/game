@@ -131,12 +131,29 @@ export class SketchObjects {
     return dx * dx + dz * dz <= reach * reach;
   }
 
+  /**
+   * Co-op guest: the host owns printing; progress arrives through `setProgress` and must not
+   * decay here.
+   */
+  replica = false;
+
+  /** Mirror a replicated print progress (co-op guest). */
+  setProgress(id: string, t: number): void {
+    const e = this.find(id);
+    if (!e || e.printed || e.t === t) return;
+    e.t = Math.max(0, Math.min(1, t));
+    e.visual?.setProgress(e.t);
+    this.progressMsg.id = id;
+    this.progressMsg.t = e.t;
+    this.events.emit('sketch:progress', this.progressMsg);
+  }
+
   update(dt: number, c: CrystalSample): void {
     this.time += dt;
     const S = TUNING.sketch;
     for (const e of this.list) {
       e.visual?.update(dt, this.time);
-      if (e.printed || !e.enabled) continue;
+      if (e.printed || !e.enabled || this.replica) continue;
       const active = SketchObjects.inReach(e.def, c);
       const before = e.t;
       if (active) {

@@ -227,7 +227,7 @@ export class LettererKit extends KitBase {
     w.tier = tier;
     w.text = text;
     w.col = WORD_COL[tier] ?? C.gold;
-    w.world = world;
+    w.world = this.resolves(world);
     w.revealAcc = 1e9;
     w.air.length = 0;
     const v = this.vfx();
@@ -267,7 +267,8 @@ export class LettererKit extends KitBase {
       }
       // letters reveal a little ink in flight (sparse sources: 16-slot budget)
       w.revealAcc += s;
-      if (w.world && w.revealAcc >= 1.8) {
+      // (reveal is per machine: every copy of the word inks, only the resolving one hits)
+      if (w.revealAcc >= 1.8) {
         w.revealAcc = 0;
         H.reveal.addSource(w.x, w.z, L.flightReveal, 0.4);
       }
@@ -319,7 +320,6 @@ export class LettererKit extends KitBase {
         );
       }
     H.sfx('bolt_hit', 0.8 + w.tier * 0.1, 1.1 - w.tier * 0.15, [w.x, y + 0.5, w.z]);
-    if (!w.world) return;
     // letter-shaped reveal: one patch per ~3 letters
     const patches = Math.max(1, Math.round(n / 3));
     const rr = L.reveal[w.tier] ?? 1.4;
@@ -327,6 +327,7 @@ export class LettererKit extends KitBase {
       const o = patches === 1 ? 0 : ((k / (patches - 1)) * 2 - 1) * ((n - 1) / 2) * LETTER_GAP;
       H.reveal.addSource(w.x + px * o, w.z + pz * o, rr, life);
     }
+    if (!w.world) return;
     const dmg = (L.damage[w.tier] ?? 1) + (this.has('boldFace') ? 1 : 0);
     inRadius(H, w.x, w.z, L.hitRadius + w.tier * 0.3, (t) => this.hits.add(t.id, 0.08, dmg, w.x, w.z));
     if (this.has('ellipsis')) {
@@ -350,8 +351,8 @@ export class LettererKit extends KitBase {
         v.flat.spawn(text[i]!, x + Math.sin(a) * 1.6, y, z + Math.cos(a) * 1.6, 0.8, C.teal, 1.5, a);
       }
     H.sfx('eraser_sweep', 0.4, 1.7);
-    if (!world) return;
     H.reveal.addSource(x, z, 2, 1.5);
+    if (!this.resolves(world)) return;
     inRadius(H, x, z, B.shove, (t) => {
       const g = t as Ghost;
       if (g.kind === undefined) return;
@@ -361,7 +362,7 @@ export class LettererKit extends KitBase {
     });
   }
 
-  private whoosh(fx: number, fz: number, dx: number, dz: number, world: boolean): void {
+  private whoosh(fx: number, fz: number, dx: number, dz: number, _world: boolean): void {
     const H = this.host;
     const W = H.tuning.heroes.letterer.whoosh;
     const D = H.tuning.dash;
@@ -372,7 +373,6 @@ export class LettererKit extends KitBase {
       const k = ((i + 0.5) / text.length) * D.distance;
       v?.flat.spawn(text[i]!, fx + dx * k, y, fz + dz * k, 0.7, C.cream, W.life, Math.atan2(dx, dz));
     }
-    if (!world) return;
     for (let k = 0; k < 3; k++) {
       const d = ((k + 0.5) / 3) * D.distance;
       H.reveal.addSource(fx + dx * d, fz + dz * d, W.radius, W.life);
@@ -386,7 +386,14 @@ export class LettererKit extends KitBase {
     const n = letters.length;
     for (let i = 0; i < n; i++) {
       const k = 2 + i * S.spacing;
-      this.storm.push({ ch: letters[i]!, x: x + dx * k, z: z + dz * k, t: -i * 0.12, done: false, world });
+      this.storm.push({
+        ch: letters[i]!,
+        x: x + dx * k,
+        z: z + dz * k,
+        t: -i * 0.12,
+        done: false,
+        world: this.resolves(world),
+      });
     }
     this.host.events.emit('fx:panelCut', {
       word: 'sfxStorm',
@@ -411,8 +418,8 @@ export class LettererKit extends KitBase {
       this.fx?.discs.spawn(s.x, y, s.z, S.radius * 0.8, C.ink, 0, 1.2);
       H.sfx('boss_roar', 0.25, 2.2, [s.x, y + 1, s.z]);
       H.events.emit('fx:shake', { intensity: 0.3, duration: 0.2 });
-      if (!s.world) continue;
       H.reveal.addSource(s.x, s.z, S.radius, S.life);
+      if (!s.world) continue;
       inRadius(H, s.x, s.z, S.radius, (t) => this.hits.add(t.id, 0.08, S.damage, s.x, s.z));
     }
     if (!live) this.storm.length = 0;

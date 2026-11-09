@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { FLAT_DICTIONARIES, I18n, interpolate } from '../../src/ui/i18n';
+import { FLAT_DICTIONARIES, I18n, interpolate, loadLang } from '../../src/ui/i18n';
 import { parseCredits } from '../../src/ui/screens/credits';
 import { sanitize } from '../../src/ui/settings';
+
+// Turkish is a lazy chunk in the app
+await loadLang('tr');
 
 const en = FLAT_DICTIONARIES.en;
 const tr = FLAT_DICTIONARIES.tr;

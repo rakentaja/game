@@ -22,8 +22,11 @@ import { SplashMeter } from '../../src/entities/heroes/splash';
 import { Player } from '../../src/entities/Player';
 import { Combat } from '../../src/systems/combat';
 import { InkEnergy } from '../../src/systems/ink-energy';
-import { FLAT_DICTIONARIES } from '../../src/ui/i18n';
+import { FLAT_DICTIONARIES, loadLang } from '../../src/ui/i18n';
 import { HERO_DICTS } from '../../src/ui/i18n/heroes';
+
+// Turkish is a lazy chunk in the app
+await loadLang('tr');
 
 const DT = 1 / 60;
 

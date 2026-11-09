@@ -177,6 +177,12 @@ export class LoadingScreen extends Screen {
     // language change while loading: only the captions change
     if (!this.visible) return;
     if (!this.finished) this.renderMeta();
+    // (also when the lazily loaded dictionary lands after the screen was built)
+    const el = this.el;
+    if (!el) return;
+    el.setAttribute('aria-label', this.env.t('loading.inking'));
+    const issue = el.querySelector('.loading-issue');
+    if (issue) issue.textContent = `${this.env.t('title.issue')} · ${this.env.t('title.subtitle')}`;
   }
 }
 

@@ -1,6 +1,7 @@
 /**
  * Second local player's input (`?local2p=1`): keyboard IJKL move, U hold crystal, O bolt,
- * H dash (Y snuff), or the SECOND connected gamepad (left stick, RT/LT crystal, A dash, X/B bolt).
+ * H dash (Y snuff), N ultimate, or the SECOND connected gamepad (left stick, RT/LT crystal, A dash,
+ * X/B bolt, LB ultimate).
  *
  * Player 1's Input also binds J/K (bolt/dash). While this input is alive its capture-phase key
  * listener swallows the second player's keys, so they never reach player 1.
@@ -8,7 +9,7 @@
 import * as THREE from 'three';
 import type { InputAPI, InputState } from '../core/types';
 
-const KEYS = new Set(['KeyI', 'KeyJ', 'KeyK', 'KeyL', 'KeyU', 'KeyO', 'KeyH', 'KeyY']);
+const KEYS = new Set(['KeyI', 'KeyJ', 'KeyK', 'KeyL', 'KeyU', 'KeyO', 'KeyH', 'KeyY', 'KeyN']);
 const PAD_DEAD = 0.22;
 
 export class SecondInput implements InputAPI {
@@ -20,9 +21,11 @@ export class SecondInput implements InputAPI {
     dashDir: new THREE.Vector2(),
     pausePressed: false,
     snuffPressed: false,
+    ultimatePressed: false,
     device: 'keyboard',
   };
   private keys = new Set<string>();
+  private ult = false;
   private bolt = false;
   private dash = false;
   private snuff = false;
@@ -45,6 +48,7 @@ export class SecondInput implements InputAPI {
     if (e.code === 'KeyO') this.bolt = true;
     else if (e.code === 'KeyH') this.dash = true;
     else if (e.code === 'KeyY') this.snuff = true;
+    else if (e.code === 'KeyN') this.ult = true;
   };
 
   private onUp = (e: KeyboardEvent): void => {
@@ -61,7 +65,8 @@ export class SecondInput implements InputAPI {
     let bolt = this.bolt;
     let dash = this.dash;
     let snuff = this.snuff;
-    this.bolt = this.dash = this.snuff = false;
+    let ult = this.ult;
+    this.bolt = this.dash = this.snuff = this.ult = false;
     s.dashDir.set(0, 0);
     const pad = this.pad();
     if (pad && this.enabled) {
@@ -88,6 +93,7 @@ export class SecondInput implements InputAPI {
       }
       if (edge(1) || edge(2)) bolt = true;
       if (edge(3)) snuff = true;
+      if (edge(4)) ult = true;
       crystal = crystal || on(5) || on(6) || on(7);
     }
     const l = Math.hypot(mx, my);
@@ -97,13 +103,14 @@ export class SecondInput implements InputAPI {
     }
     if (!this.enabled) {
       mx = my = 0;
-      crystal = bolt = dash = snuff = false;
+      crystal = bolt = dash = snuff = ult = false;
     }
     s.move.set(mx, my);
     s.crystalHeld = crystal;
     s.boltPressed = bolt;
     s.dashPressed = dash;
     s.snuffPressed = snuff;
+    s.ultimatePressed = ult;
     s.pausePressed = false;
   }
 

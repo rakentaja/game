@@ -21,13 +21,13 @@ import { Hud, type HudSources } from './hud/hud';
 import type { Hint } from './hud/tutorial';
 import { I18n, type Vars } from './i18n';
 import { ICON_IOS_SHARE } from './icons';
-import { CoverScreen } from './screens/cover';
-import { CreditsScreen } from './screens/credits';
+import type { CoverScreen } from './screens/cover';
+import type { CreditsScreen } from './screens/credits';
 import { LoadingScreen } from './screens/loading';
 import { DeathOverlay, TitleCard } from './screens/overlays';
 import { PauseScreen } from './screens/pause';
 import type { ToastOpts, UIEnv } from './screens/screen';
-import { SettingsScreen } from './screens/settings';
+import type { SettingsScreen } from './screens/settings';
 import { TitleScreen } from './screens/title';
 import { SettingsStore } from './settings';
 import { Toasts } from './toast';
@@ -65,9 +65,13 @@ export class UI {
   readonly captions: Captions;
   private titleScr: TitleScreen;
   private pauseScr: PauseScreen;
-  private settingsScr: SettingsScreen;
-  private creditsScr: CreditsScreen;
-  private coverScr: CoverScreen;
+  /** Lazy (first open). */
+  private settingsScr: SettingsScreen | null = null;
+  private settingsMod: Promise<SettingsScreen> | null = null;
+  /** Credits + comic cover are lazy (src/ui/screens/end.ts): solo boot never needs them. */
+  private creditsScr: CreditsScreen | null = null;
+  private coverScr: CoverScreen | null = null;
+  private endScreens: Promise<void> | null = null;
   private death: DeathOverlay;
   private card: TitleCard;
   private toasts: Toasts;
@@ -92,6 +96,8 @@ export class UI {
     this.i18n = new I18n(this.settings.get('lang'));
     document.documentElement.lang = this.i18n.lang;
     this.t = this.i18n.t;
+    // the Turkish dictionary is lazy: repaint once it lands
+    this.offs.push(this.i18n.onChange(() => this.refreshText()));
     this.onQuit = opts.onQuit ?? null;
     this.toasts = new Toasts(() => this.sfx('ui_click'));
 
@@ -111,9 +117,6 @@ export class UI {
     this.loading = new LoadingScreen(this.env);
     this.titleScr = new TitleScreen(this.env);
     this.pauseScr = new PauseScreen(this.env);
-    this.settingsScr = new SettingsScreen(this.env);
-    this.creditsScr = new CreditsScreen(this.env);
-    this.coverScr = new CoverScreen(this.env);
     this.death = new DeathOverlay(this.env);
     this.card = new TitleCard(this.env);
 
@@ -178,6 +181,7 @@ export class UI {
 
   /** Ink the logo, wait for the first tap (audio unlock), then fade out the loading screen. */
   async finishLoading(opts: { waitForTap?: boolean } = {}): Promise<void> {
+    await this.i18n.ready();
     await this.loading.complete(opts);
     this.loading.hide();
   }
@@ -228,25 +232,42 @@ export class UI {
   cover(stats: RunStats, opts: { bestTimeS?: number | null } = {}): Promise<void> {
     this.hideHud();
     this.setPaused(false, false);
-    return new Promise((resolve) => {
-      this.coverScr.show(stats, {
-        bestTimeS: opts.bestTimeS,
-        credits: () => void this.openCredits(),
-        title: () => {
-          this.coverScr.hide();
-          resolve();
-        },
-        afterReveal: () => this.offerInstall(),
-      });
+    return this.loadEndScreens().then(
+      () =>
+        new Promise((resolve) => {
+          const scr = this.coverScr!;
+          scr.show(stats, {
+            bestTimeS: opts.bestTimeS,
+            credits: () => void this.openCredits(),
+            title: () => {
+              scr.hide();
+              resolve();
+            },
+            afterReveal: () => this.offerInstall(),
+          });
+        }),
+    );
+  }
+
+  /** Credits + cover screens (lazy chunk; prefetched from the boss page). */
+  loadEndScreens(): Promise<void> {
+    this.endScreens ??= import('./screens/end').then((m) => {
+      this.creditsScr ??= new m.CreditsScreen(this.env);
+      this.coverScr ??= new m.CoverScreen(this.env);
     });
+    return this.endScreens;
   }
 
   openSettings(): Promise<void> {
-    return new Promise((r) => this.settingsScr.show(r));
+    this.settingsMod ??= import('./screens/settings').then((m) => {
+      this.settingsScr ??= new m.SettingsScreen(this.env);
+      return this.settingsScr;
+    });
+    return this.settingsMod.then((scr) => new Promise((r) => scr.show(r)));
   }
 
   openCredits(): Promise<void> {
-    return new Promise((r) => void this.creditsScr.show(r));
+    return this.loadEndScreens().then(() => new Promise((r) => void this.creditsScr!.show(r)));
   }
 
   titleCard(page: PageId): Promise<void> {
@@ -288,7 +309,7 @@ export class UI {
       });
     } else {
       this.pauseScr.hide();
-      this.settingsScr.hide();
+      this.settingsScr?.hide();
     }
     if (emit) this.bus.emit('game:pause', { paused });
   }
@@ -302,8 +323,8 @@ export class UI {
     if (this.paused) {
       input.poll();
       if (input.state.pausePressed) {
-        if (this.settingsScr.visible) this.settingsScr.close();
-        else if (this.creditsScr.visible) this.creditsScr.close();
+        if (this.settingsScr?.visible) this.settingsScr.close();
+        else if (this.creditsScr?.visible) this.creditsScr.close();
         else {
           this.setPaused(false);
           input.poll(); // clear the edge so the next frame doesn't re-pause
@@ -454,7 +475,7 @@ export class UI {
       this.coverScr,
       this.card,
     ]) {
-      scr.refresh();
+      scr?.refresh();
     }
     this.hud.refreshText();
   }
@@ -473,7 +494,7 @@ export class UI {
       this.creditsScr,
       this.coverScr,
     ]) {
-      (scr as { hide(): void }).hide();
+      (scr as { hide(): void } | null)?.hide();
     }
   }
 }
