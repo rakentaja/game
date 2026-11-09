@@ -16,6 +16,7 @@ import { load, save } from '../core/storage';
 import type { GameContext, PageId, RunStats, Settings, SfxId } from '../core/types';
 import { TUNING } from '../data/tuning';
 import { h } from './dom';
+import { Captions } from './hud/captions';
 import { Hud, type HudSources } from './hud/hud';
 import type { Hint } from './hud/tutorial';
 import { I18n, type Vars } from './i18n';
@@ -61,6 +62,7 @@ export class UI {
   readonly root: HTMLElement;
   readonly hud: Hud;
   readonly loading: LoadingScreen;
+  readonly captions: Captions;
   private titleScr: TitleScreen;
   private pauseScr: PauseScreen;
   private settingsScr: SettingsScreen;
@@ -126,7 +128,11 @@ export class UI {
       ...opts.hud,
     });
     this.hud.onPause = () => this.setPaused(true);
-    this.root.append(this.hud.el, this.toasts.el);
+    this.captions = new Captions(this.bus, this.t, (x) => this.i18n.upper(x), {
+      sfx: () => this.sfx('ui_click'),
+      haptic: (p) => this.haptic(p),
+    });
+    this.root.append(this.hud.el, this.captions.el, this.toasts.el);
 
     if (ctx.t === undefined || ctx.t !== this.t) (ctx as { t?: UI['t'] }).t = this.t;
     // input-side haptics (taps/dash/crystal) honour the vibration toggle
@@ -181,12 +187,17 @@ export class UI {
   }
 
   /** Show the title menu; resolves when the player starts (or continues) the issue. */
-  title(opts: { continuePage?: number | null } = {}): Promise<'play' | 'continue'> {
+  title(
+    opts: {
+      continuePage?: number | null;
+      daily?: { number: number; ruleKey: string; bestS: number | null } | null;
+    } = {},
+  ): Promise<'play' | 'continue' | 'daily'> {
     this.hideHud();
     this.card.hide();
     this.bus.emit('music:intensity', { layer: 'explore', level: 0 });
     return new Promise((resolve) => {
-      const done = (r: 'play' | 'continue') => {
+      const done = (r: 'play' | 'continue' | 'daily') => {
         this.titleScr.hide();
         resolve(r);
       };
@@ -194,6 +205,8 @@ export class UI {
         play: () => done('play'),
         continuePage: opts.continuePage ?? null,
         continue: () => done('continue'),
+        daily: opts.daily ?? null,
+        playDaily: () => done('daily'),
         settings: () => void this.openSettings(),
         credits: () => void this.openCredits(),
       });
@@ -202,10 +215,12 @@ export class UI {
 
   showHud(): void {
     this.hud.show();
+    this.captions.setEnabled(true);
   }
 
   hideHud(): void {
     this.hud.hide();
+    this.captions.setEnabled(false);
     this.hud.tutorial.clear();
   }
 
@@ -448,6 +463,7 @@ export class UI {
     for (const off of this.offs) off();
     this.offs = [];
     this.hud.dispose();
+    this.captions.dispose();
     this.toasts.el.remove();
     for (const scr of [
       this.loading,

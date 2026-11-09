@@ -85,7 +85,12 @@
     "difficultyStory": "Hikâye",
     "difficultyNormal": "Normal",
     "difficultyStoryHint": "Daha az yırtılan sayfa, daha ucuz mürekkep",
-    "difficultyNormalHint": "Editörün istediği gibi"
+    "difficultyNormalHint": "Editörün istediği gibi",
+    "ghost": "Hayalet mürekkepçi",
+    "ghostDaily": "Günlük",
+    "ghostAlways": "Her zaman",
+    "ghostOff": "Kapalı",
+    "ghostHint": "Kurşun kalemden bir hayalet, sayfadaki en iyi turunu tekrar oynar"
   },
   "page": {
     "label": "Sayfa {n}",
@@ -167,5 +172,55 @@
     "scrub": "SİL SİL!",
     "crumple": "HIŞIR!",
     "fin": "SON MU?"
+  },
+  "daily": {
+    "entry": "Günlük Sayı #{n}",
+    "best": "Bugünün rekoru {time}",
+    "rule": {
+      "doubleGhosts": "Bugün: hayaletler çift çift geliyor.",
+      "inkPuddles": "Bugün: mürekkeplediğin her hayalet bir mürekkep birikintisi bırakıyor.",
+      "thickFog": "Bugün: her sayfaya koyu bir sis çökmüş.",
+      "longMemory": "Bugün: kâğıt mürekkebini hiç unutmuyor."
+    }
+  },
+  "caption": {
+    "scratchHint": "Karalamak için üç kez dokun",
+    "nearDeath": {
+      "0": "Tek sayfa kaldı. Çocuğun hikâyesi tükeniyordu.",
+      "1": "Kâğıt yırtılıyordu. Çocuğun şansı da.",
+      "2": "Büyücüyle çöp kutusu arasında tek bir sayfa vardı."
+    },
+    "firstKill": {
+      "0": "İlk hayalet mürekkebe gömüldü. Sonuncusu olmayacaktı.",
+      "1": "Tertemiz beyaz sayfamda bir leke eksildi.",
+      "2": "Demek çocuk kan akıtabiliyordu. Mürekkep, en azından."
+    },
+    "damage": {
+      "0": "O darbe ondan bir sayfa kopardı.",
+      "1": "Orman ısırdı. Orman hep ısırır.",
+      "2": "Kâğıt kesiği. En kötüsü.",
+      "3": "Artık kenar boşluklarından kan kaybediyordu."
+    },
+    "lowInk": {
+      "0": "Şişe neredeyse kurumuştu. Böyle gecelerde hep kurur.",
+      "1": "Mürekkep az. Zaman az. Dost hiç yok.",
+      "2": "Artık her damla sayılıyordu. Ben sayıyordum."
+    },
+    "idle": {
+      "0": "Çocuk öylece durdu. Sayfa bekledi. Ben beklemem.",
+      "1": "Boş bir sayfada kıpırdamadan durmak. Cesur seçim.",
+      "2": "Ormanda hiçbir şey kıpırdamadı. Henüz.",
+      "3": "Sen orada dikilirken seni baştan yazabilirim, evlat."
+    },
+    "multiKill": {
+      "0": "Üç hayalet, üç leke. Sayfa kalabalıklaşıyordu.",
+      "1": "Ben çizemeden o mürekkepledi onları."
+    },
+    "threat": {
+      "crystalOut": "Ve sonra kristal söndü.",
+      "fogIn": "Ve sonra sis çöktü.",
+      "ghostsHaste": "Ve sonra hayaletler acıktı.",
+      "inkDrought": "Ve sonra mürekkep kurudu."
+    }
   }
 }
