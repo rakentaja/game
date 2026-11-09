@@ -139,7 +139,7 @@ export class LettererKit extends KitBase {
     this.act('hold', { x: q2(H.position.x), z: q2(H.position.z) });
   }
 
-  override onRelease(): void {
+  override onRelease(_heldS: number): void {
     if (!this.holding) return;
     this.act('release', { x: q2(this.host.position.x), z: q2(this.host.position.z) });
   }

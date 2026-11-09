@@ -9,15 +9,12 @@
 }
 .hero-splash {
   position: absolute;
+  /* top-right, under the pause button: clear of the thumbs and the tutorial glyphs */
   right: calc(var(--pad-r) + 6px);
-  bottom: calc(var(--pad-b) + 70px);
-  width: 64px;
-  height: 64px;
+  top: calc(var(--pad-t) + 84px);
+  width: 58px;
+  height: 58px;
   pointer-events: none;
-}
-.hero-hud.left-handed .hero-splash {
-  right: auto;
-  left: calc(var(--pad-l) + 6px);
 }
 .hero-splash svg {
   width: 100%;

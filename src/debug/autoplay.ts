@@ -94,6 +94,12 @@ export interface ProjectileView {
 
 type Mode = 'walk' | 'fight' | 'print' | 'ink' | 'dodge' | 'boss' | 'unstick' | 'idle';
 
+/** The slice of a hero kit the bot reads (structural; kits are lazy chunks). */
+interface KitView {
+  id: string;
+  isPinned?(id: number): boolean;
+}
+
 const _dir = new THREE.Vector3();
 const WELL_RADIUS = 1.3;
 
@@ -191,6 +197,25 @@ export class AutoplayBot {
   private huntZ = 0;
   private huntUntil = -1;
   private lastProgress = new Map<string, { t: number; at: number }>();
+  // hero kits (?hero=): nearest live ghost at any reveal state
+  private kit: KitView | null = null;
+  private gD = Infinity;
+  private gX = 0;
+  private gZ = 0;
+  private gPinned = false;
+  private flatT = -1e9;
+  private orbiting = false;
+  private readonly ghostScan = (t: Damageable) => {
+    if (!t.alive || !('kind' in t)) return;
+    const d = Math.hypot(t.position.x - this.px, t.position.z - this.pz);
+    if (d >= this.gD) return;
+    const C = this.deps.collision;
+    if (d > 4 && C && !C.segmentClear(this.px, this.pz, t.position.x, t.position.z)) return;
+    this.gD = d;
+    this.gX = t.position.x;
+    this.gZ = t.position.z;
+    this.gPinned = !!this.kit?.isPinned?.(t.id);
+  };
 
   /** Add a sidestep away from the ray (ox,oz)+t·(dx,dz) if the player is close to it, ahead. */
   private avoidRay(ox: number, oz: number, dx: number, dz: number, width: number): void {
@@ -323,13 +348,17 @@ export class AutoplayBot {
     // ── shooting: any revealed target in range (combat picks it; Blots are preferred there)
     const tgt = this.deps.targets.nearest(p.position, T.bolt.maxRange * 0.95);
     this.fireT -= dt;
+    this.kit = (p as PlayerAPI & { kit?: KitView }).kit ?? null;
+    this.orbiting = false;
+    const hero = this.kit?.id ?? 'inker';
+    if (hero !== 'inker') this.fireT = Math.max(this.fireT, -1); // own cadence below
     // ink discipline: weak points always; minions only when flush or close (prints need ~31 ink)
     const isMinion = !!tgt && 'kind' in tgt;
     const tgtD = tgt ? Math.hypot(tgt.position.x - px, tgt.position.z - pz) : 99;
     const C = this.deps.collision;
     const blocked = !!tgt && isMinion && !!C && !C.segmentClear(px, pz, tgt.position.x, tgt.position.z);
     const thrifty = bossLive && isMinion && p.energy < 45 && tgtD > 4.5;
-    if (tgt && !thrifty && !blocked && this.fireT <= 0 && p.energy >= T.bolt.cost) {
+    if (hero === 'inker' && tgt && !thrifty && !blocked && this.fireT <= 0 && p.energy >= T.bolt.cost) {
       s.boltPressed = true;
       this.fireT = T.bolt.cooldown + 0.05;
     }
@@ -388,7 +417,8 @@ export class AutoplayBot {
       _dir.z += this.repZ * 6;
       speed = d < 2.5 ? 1 : 0.75;
       // reveal: the ghost isn't targetable yet, or a blot is choking the light
-      if ((!tgt && d < 8.5 && p.energy > 35) || (!tgt && this.blotD < 4 && p.energy > 15)) hold = true;
+      if (hero !== 'inker') hold = this.heroFight(s, hero, p, px, pz, tgt);
+      else if ((!tgt && d < 8.5 && p.energy > 35) || (!tgt && this.blotD < 4 && p.energy > 15)) hold = true;
     } else if (this.huntUntil > this.time && this.huntD < 80) {
       // a print is blocked on a straggler somewhere: go and find it
       mode = 'fight';
@@ -413,7 +443,7 @@ export class AutoplayBot {
     }
 
     // ── contact: dash out
-    if (this.nearD < 1.7 && dashReady) {
+    if (this.nearD < 1.7 && dashReady && !this.orbiting) {
       this.dashAway(s, px, pz, this.nearX, this.nearZ);
     }
 
@@ -476,6 +506,63 @@ export class AutoplayBot {
     }
   }
 
+  /**
+   * Non-Inker heroes in a fight (only reached in 'fight' mode). Writes taps into `s`, may bend
+   * `_dir`, returns whether to hold the channel verb.
+   *  - Penciller: ruler-pin the nearest ghost, then trace a tight loop around it (Thumbnail Crush).
+   *  - Letterer : throw words at the nearest ghost; balloon only when something is on top of us.
+   *  - Colorist : spray revealed ghosts; fill a flat on the ground when they crowd in.
+   */
+  private heroFight(
+    s: InputState,
+    hero: string,
+    p: PlayerAPI,
+    px: number,
+    pz: number,
+    tgt: Damageable | null,
+  ): boolean {
+    this.gD = Infinity;
+    this.deps.targets.forEach(this.ghostScan);
+    const H = this.deps.tuning.heroes;
+    if (this.gD === Infinity) return false;
+    const dx = this.gX - px;
+    const dz = this.gZ - pz;
+    const d = this.gD || 1;
+    if (hero === 'penciller') {
+      if (!this.gPinned) {
+        if (this.fireT <= 0 && d < H.penciller.ruler.range && p.energy >= H.penciller.ruler.cost) {
+          s.boltPressed = true;
+          this.fireT = 0.45;
+        }
+        return false;
+      }
+      // orbit the pinned ghost at ~1.4 m while tracing: the loop closes in under the pin time
+      this.orbiting = true;
+      const R = 1.4;
+      const radial = (d - R) * 1.4;
+      _dir.set((dx / d) * radial - (dz / d) * 1.2, 0, (dz / d) * radial + (dx / d) * 1.2);
+      return true;
+    }
+    if (hero === 'letterer') {
+      if (this.fireT <= 0 && d < H.letterer.throwRange && p.energy >= H.letterer.cost) {
+        s.boltPressed = true;
+        this.fireT = 0.32;
+      }
+      return this.nearD < 1.6 && p.energy > 20;
+    }
+    // colorist
+    if (tgt && this.fireT <= 0 && p.energy >= H.colorist.cost) {
+      s.boltPressed = true;
+      this.fireT = H.colorist.cooldown + 0.04;
+    }
+    // close in: her light is short
+    if (!tgt) _dir.set(dx, 0, dz);
+    if (d < 3 && this.time - this.flatT > 7 && p.energy > 30) {
+      this.flatT = this.time;
+    }
+    return this.time - this.flatT < H.colorist.bucket.charge + 0.15;
+  }
+
   // ───────────────────────────── goals ─────────────────────────────
 
   private advancePath(px: number, pz: number): void {
@@ -487,6 +574,16 @@ export class AutoplayBot {
       const dz = this.pts[i * 2 + 1]! - pz;
       if (dx * dx + dz * dz < 1.8 * 1.8) this.progress++;
       else break;
+    }
+    // a fight can carry us past the next point without touching it: catch up to any point a few
+    // metres ahead that we're standing on (otherwise the look-ahead keeps us circling here)
+    for (let i = Math.min(this.n - 2, this.progress + 12); i > this.progress; i--) {
+      const dx = this.pts[i * 2]! - px;
+      const dz = this.pts[i * 2 + 1]! - pz;
+      if (dx * dx + dz * dz < 1.8 * 1.8) {
+        this.progress = i + 1;
+        break;
+      }
     }
     if (this.progress >= this.n - 1) {
       const ex = this.pts[(this.n - 1) * 2]! - px;

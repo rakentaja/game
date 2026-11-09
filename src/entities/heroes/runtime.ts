@@ -43,6 +43,7 @@ export class HeroRuntime {
   private offered = new Set<PageId>();
   private offs: (() => void)[] = [];
   private loading: Promise<void> | null = null;
+  private combosOff: (() => void) | null = null;
 
   constructor(
     private ctx: GameContext,
@@ -61,6 +62,15 @@ export class HeroRuntime {
           rememberHero(h);
           void this.prepare(h);
         }
+        // pair combos only exist with two heroes: detection is a lazy chunk
+        if (!this.combosOff)
+          void import('./combos').then((m) => {
+            this.combosOff ??= m.installCombos(
+              ev,
+              () => ctx.time.simTime,
+              (x, z) => ctx.collision.groundHeight(x, z),
+            );
+          });
       }),
     );
   }
@@ -142,6 +152,7 @@ export class HeroRuntime {
   }
 
   dispose(): void {
+    this.combosOff?.();
     for (const o of this.offs) o();
     this.offs.length = 0;
     this.hud?.dispose();

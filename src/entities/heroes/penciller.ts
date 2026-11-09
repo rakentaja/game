@@ -129,7 +129,7 @@ export class PencillerKit extends KitBase {
     this.pushTrace(this.host.position.x, this.host.position.z);
   }
 
-  override onHoldTick(): void {
+  override onHoldTick(_dt: number): void {
     const H = this.host;
     const sp = H.tuning.heroes.penciller.trace.spacing;
     const lx = this.xs[this.n - 1]!;
@@ -173,7 +173,7 @@ export class PencillerKit extends KitBase {
     }
   }
 
-  override onRelease(): void {
+  override onRelease(_heldS: number): void {
     if (this.n >= 3) {
       const pts: number[] = [];
       const step = Math.max(1, Math.ceil(this.n / 24));

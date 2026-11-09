@@ -102,6 +102,8 @@ export function strike(t: Damageable, dmg: number, fx: number, fz: number): bool
  * the ghost becomes hittable a couple of sim steps later). Fixed pool.
  */
 export class DelayedHits {
+  /** Seconds a due hit keeps waiting for its target to become revealed. */
+  static grace = 0.45;
   private id = new Int32Array(24).fill(-1);
   private t = new Float32Array(24);
   private dmg = new Float32Array(24);
@@ -129,6 +131,8 @@ export class DelayedHits {
       this.t[i]! -= dt;
       if (this.t[i]! > 0) continue;
       const t = byId(this.host(), this.id[i]!);
+      // not hittable yet: the reveal source is still growing in — keep trying for a moment
+      if (t?.alive && !t.revealed && this.t[i]! > -DelayedHits.grace) continue;
       this.id[i] = -1;
       if (!t?.alive || !t.revealed) continue;
       const killed = strike(t, this.dmg[i]!, this.fx[i]!, this.fz[i]!);
