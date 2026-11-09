@@ -387,6 +387,83 @@ export const TUNING = {
       nearBack: 3,
       nearUp: 1.6,
     },
+    // ── boss workstream (Idea Ledger wave 1): Rewrites, summons, stems, Blank Page Reversed ──
+    /** Rewrites: at each phase transition the Editor cuts one player verb from the issue. */
+    rewrite: {
+      enabled: true,
+      /** Seconds a verb stays cut (counted from the transition start). */
+      cutTime: 20,
+      storyCutTime: 12,
+      /** Verb cut entering phase 2, phase 3 (cycled if shorter). 'crystal' is never cut. */
+      rotation: ['dash', 'bolt'] as ('bolt' | 'dash' | 'crystal' | 'print')[],
+      storyRotation: ['bolt', 'print'] as ('bolt' | 'dash' | 'crystal' | 'print')[],
+      /** Story never cuts these (needed to survive the current attacks). */
+      storyUnsafe: ['dash', 'crystal'] as ('bolt' | 'dash' | 'crystal' | 'print')[],
+      /** The verb's pencil sketch appears this long after the phase starts. */
+      sketchDelay: 1.2,
+      drawIn: 1.4,
+      printHold: 1.6,
+      printRadius: 7,
+      printDecay: 0.5,
+      /** Ink refunded when the sketch is printed (the verb returns with its ink). */
+      inkRefund: 20,
+      /** Sketch ground spots [x, z] for the phase-2 and phase-3 rewrites (clear of redraw strips). */
+      sketchPos: [
+        [-5.5, 4.5],
+        [5.5, 4.5],
+      ] as [number, number][],
+      sketchY: 1.0,
+      /** Icon decal half-size (m). */
+      sketchSize: 1.5,
+    },
+    /** Arena redraw at transitions: reveal is re-inked, then these rim strips are erased [ax, az, bx, bz, hw]. */
+    redraw: {
+      p2: [
+        [-9.4, -1.5, -8.6, 5.0, 0.8],
+        [9.0, -3.0, 9.5, 3.0, 0.8],
+      ] as [number, number, number, number, number][],
+      p3: [
+        [-6.2, 8.6, -1.8, 10.2, 0.8],
+        [2.2, 10.2, 6.6, 8.4, 0.8],
+      ] as [number, number, number, number, number][],
+    },
+    /** Phase 2 summons: the left hand draws roster enemies into the arena ('spawn:request'). */
+    summon: {
+      every: 8.5,
+      first: 4,
+      drawTime: 1.4,
+      /** Cycled in order; the enemies workstream can append new kinds. */
+      kinds: ['smudge', 'scribbler', 'blot'] as ('smudge' | 'scribbler' | 'blot')[],
+      storyKinds: ['smudge', 'scribbler'] as ('smudge' | 'scribbler' | 'blot')[],
+      max: 3,
+      storyMax: 2,
+      /** Spawn distance band from the arena centre, and min distance to the target player. */
+      minR: 2.5,
+      maxR: 6.5,
+      awayFromPlayer: 3.5,
+    },
+    /** Soundtrack erase: P1 drag strikes erase stems 0..count-1 cyclically; P2 prints restore them. */
+    stems: { count: 4 },
+    /** Phase 3 "Blank Page, Reversed": the body only shows where the ink trail has been. */
+    paint: {
+      enabled: true,
+      /** Crystal trail sample spacing (s) and minimum travel (m) before a new sample. */
+      every: 0.35,
+      minMove: 0.9,
+      /** Sample radius = crystal reveal radius × radiusMul. */
+      radiusMul: 0.9,
+      life: 8,
+      dashRadius: 1.8,
+      dashLife: 10,
+      /** Story: trail lasts longer. */
+      storyLifeMul: 1.5,
+      /** Paint coverage at a weak point needed to hit it. */
+      hitThreshold: 0.5,
+      /** reduceMotion: slower white-out (no sudden brightness jump). */
+      reduceMotionFadeMul: 1.8,
+    },
+    /** Co-op prep (no networking): how attacks pick a target among several players. */
+    coop: { targetMode: 'nearest' as 'nearest' | 'alternate' },
   },
   camera: {
     distance: 9,

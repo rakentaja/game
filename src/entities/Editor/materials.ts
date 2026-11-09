@@ -5,11 +5,14 @@
  *     graphite hatching + dashed contour), with wet-ink drips running down over the seam
  *   - per-part erase (`uPart[i]`) eats ragged holes back to pencil (arms after weak points die)
  *   - `uBlank` (Blank Page) turns everything to pencil except inside the crystal light
+ *   - `uReversed` (Blank Page, Reversed): the body fades to bare paper except where the player's
+ *     ink trail (`uPaint`, see paint.ts) has been
  *   - `uInkOver` floods it with ink from the top (death), `uTear` rips it into paper shreds
  * Palette is used verbatim (ColorManagement disabled by the app).
  */
 import * as THREE from 'three';
 import { PAL } from '../../data/palette';
+import { PAINT_SLOTS } from './paint';
 
 const c = (h: string) => new THREE.Color(h);
 
@@ -105,6 +108,21 @@ const SPLIT_GLSL = /* glsl */ `
   uniform float uSplitY, uPrintAll, uInkOver, uInkTop, uBlank, uRevealR, uTear, uTime, uBoil;
   uniform float uPart[${PART_COUNT}];
   uniform vec3 uCrystalPos;
+  uniform float uReversed;
+  uniform vec4 uPaint[${PAINT_SLOTS}];
+  // Blank Page, Reversed: 1 = bare paper (body invisible here), written by pencilMask
+  float gVanish = 0.0;
+  float paintAt(vec2 p){
+    float n = (efbm(p*1.7 + 3.1) - 0.5) * 0.6;
+    float a = 0.0;
+    for (int i = 0; i < ${PAINT_SLOTS}; i++) {
+      vec4 s = uPaint[i];
+      if (s.z <= 0.0) continue;
+      float d = length(p - s.xy) + n;
+      a = max(a, smoothstep(s.z, s.z - 0.8, d) * s.w);
+    }
+    return a;
+  }
   // 1 = pencil sketch, 0 = finished ink
   float pencilMask(vec3 wp, vec3 op, float part, out float seam){
     float drip = pow(enoise(vec2((wp.x*1.3 + wp.z*0.9)*2.2, 0.5)), 3.0) * 1.1;
@@ -129,6 +147,10 @@ const SPLIT_GLSL = /* glsl */ `
     if (uBlank > 0.0) {
       float d = length(wp - uCrystalPos);
       float lit = smoothstep(uRevealR + 0.6, uRevealR - 0.9, d + (efbm(wp.xz*3.0)-0.5)*1.2);
+      if (uReversed > 0.0) {
+        lit = max(lit, paintAt(wp.xz));
+        gVanish = uReversed * (1.0 - lit);
+      }
       m = max(m, uBlank * (1.0 - lit));
     }
     return m;
@@ -208,6 +230,8 @@ const BODY_FRAG = /* glsl */ `
       if (tl < w * 0.55) discard;
       col = mix(col, uPaper, 1.0 - smoothstep(w*0.55, w, tl));
     }
+    // Blank Page, Reversed: unpainted body is bare paper (a whisper of graphite contour stays)
+    col = mix(col, uPaper, gVanish * (1.0 - contour * 0.12));
     // hit flash: paper pop with hot rim
     col = mix(col, uPaper, uHurt * 0.75);
     col = mix(col, uGlowEdge, uHurt * smoothstep(0.4, 0.8, fres));
@@ -258,7 +282,9 @@ const OUTLINE_FRAG = /* glsl */ `
     // pencil part of the hull: dashed, sketchy graphite
     float dash = fract((vWPos.y*1.7 + vWPos.x*0.6 - vWPos.z*0.4)*1.9 + uBoil*0.21);
     if (pm > 0.5 && dash > 0.62) discard;
+    if (gVanish > 0.85) discard;
     vec3 col = mix(uInk, uGraphite, pm);
+    col = mix(col, uPaper, gVanish);
     col = mix(col, uPaper, uHurt * 0.3);
     gl_FragColor = vec4(col, 1.0);
   }
@@ -281,6 +307,8 @@ export interface EditorUniforms {
   uInkTop: THREE.IUniform<number>;
   uBlank: THREE.IUniform<number>;
   uRevealR: THREE.IUniform<number>;
+  uReversed: THREE.IUniform<number>;
+  uPaint: THREE.IUniform<THREE.Vector4[]>;
   uTear: THREE.IUniform<number>;
   uHurt: THREE.IUniform<number>;
   uPart: THREE.IUniform<number[]>;
@@ -319,6 +347,8 @@ export function createEditorUniforms(shared: Record<string, THREE.IUniform>): Ed
     uInkTop: { value: 8 },
     uBlank: { value: 0 },
     uRevealR: { value: 3 },
+    uReversed: { value: 0 },
+    uPaint: { value: Array.from({ length: PAINT_SLOTS }, () => new THREE.Vector4(0, 0, 0, 0)) },
     uTear: { value: 0 },
     uHurt: { value: 0 },
     uPart: { value: new Array(PART_COUNT).fill(0) },
@@ -504,6 +534,103 @@ export function createTelegraphMaterial(shared: EditorUniforms): THREE.ShaderMat
     },
     vertexShader: TELE_VERT,
     fragmentShader: TELE_FRAG,
+    transparent: true,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -4,
+    polygonOffsetUnits: -4,
+  });
+}
+
+// ───────────────────────────── Icon sketch decals (rewrites, summons) ─────────────────────────────
+
+/** Icon ids for `createIconSketchMaterial` (uIcon). */
+export const ICON = { bolt: 0, dash: 1, crystal: 2, print: 3, summon: 4 } as const;
+
+const ICON_FRAG = /* glsl */ `
+  uniform vec3 uInk, uGraphite, uGlowEdge, uGlowCore, uPaper;
+  uniform float uIcon, uDraw, uPrint, uFade, uTime, uBoil;
+  varying vec2 vUv; varying vec3 vWPos;
+  ${NOISE_GLSL}
+  float seg(vec2 p, vec2 a, vec2 b){ vec2 pa = p - a, ba = b - a;
+    float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0); return length(pa - ba*h); }
+  float icon(vec2 p){
+    float d = 9.0;
+    if (uIcon < 0.5) {            // bolt: zig-zag lightning
+      d = min(d, seg(p, vec2(-0.22, 0.78), vec2(0.18, 0.08)));
+      d = min(d, seg(p, vec2(0.18, 0.08), vec2(-0.16, 0.02)));
+      d = min(d, seg(p, vec2(-0.16, 0.02), vec2(0.24, -0.78)));
+    } else if (uIcon < 1.5) {     // dash: arrow + speed lines
+      d = min(d, seg(p, vec2(-0.55, 0.0), vec2(0.62, 0.0)));
+      d = min(d, seg(p, vec2(0.62, 0.0), vec2(0.32, 0.3)));
+      d = min(d, seg(p, vec2(0.62, 0.0), vec2(0.32, -0.3)));
+      d = min(d, seg(p, vec2(-0.8, 0.34), vec2(-0.25, 0.34)));
+      d = min(d, seg(p, vec2(-0.8, -0.34), vec2(-0.25, -0.34)));
+    } else if (uIcon < 2.5) {     // crystal: diamond with a facet
+      d = min(d, seg(p, vec2(0.0, 0.8), vec2(0.5, 0.0)));
+      d = min(d, seg(p, vec2(0.5, 0.0), vec2(0.0, -0.8)));
+      d = min(d, seg(p, vec2(0.0, -0.8), vec2(-0.5, 0.0)));
+      d = min(d, seg(p, vec2(-0.5, 0.0), vec2(0.0, 0.8)));
+      d = min(d, seg(p, vec2(-0.5, 0.0), vec2(0.5, 0.0)));
+    } else if (uIcon < 3.5) {     // print: a rubber stamp over a printed line
+      d = min(d, seg(p, vec2(0.0, 0.25), vec2(0.0, 0.7)));
+      d = min(d, seg(p, vec2(-0.22, 0.72), vec2(0.22, 0.72)));
+      d = min(d, seg(p, vec2(-0.6, 0.22), vec2(0.6, 0.22)));
+      d = min(d, seg(p, vec2(0.6, 0.22), vec2(0.6, -0.12)));
+      d = min(d, seg(p, vec2(0.6, -0.12), vec2(-0.6, -0.12)));
+      d = min(d, seg(p, vec2(-0.6, -0.12), vec2(-0.6, 0.22)));
+      d = min(d, seg(p, vec2(-0.72, -0.48), vec2(0.72, -0.48)));
+    } else {                      // summon: a loose scribble spiral (an enemy being drawn)
+      float r = length(p); float a = atan(p.y, p.x);
+      float sp = abs(fract((r * 3.2 - a / 6.2832) + 0.5) - 0.5) / 3.2;
+      d = r < 0.8 ? sp : 9.0;
+    }
+    return d;
+  }
+  void main(){
+    vec2 p = vUv * 2.0 - 1.0;
+    float r = length(p);
+    if (r > 1.0) discard;
+    float ang = atan(p.y, p.x);
+    // draw-in: sweeps around like a pencil going round the page
+    float drawn = step(fract((ang / 6.2832) + 0.25), uDraw * 1.02);
+    float wob = (enoise(p * 3.0 + uBoil) - 0.5) * 0.05;
+    float d = icon(p + wob);
+    float stroke = 1.0 - smoothstep(0.045, 0.075, d);
+    // pencil: broken, uneven graphite; ink: solid
+    float broken = step(0.32, fract((p.x * 0.7 + p.y) * 5.0 + uBoil * 0.13)) * (0.6 + 0.4 * enoise(p * 9.0));
+    float ring = 1.0 - smoothstep(0.015, 0.04, abs(r - 0.93 - wob));
+    float ringDash = step(0.45, fract(ang * 3.5 + uTime * 0.4));
+    // print progress inks the icon from the centre out, with a hot front
+    float inked = step(r, uPrint * 1.05);
+    float front = (1.0 - smoothstep(0.0, 0.06, abs(r - uPrint * 1.05))) * step(0.01, uPrint) * step(uPrint, 0.99);
+    float a = max(stroke * mix(broken, 1.0, inked), ring * ringDash * 0.7);
+    vec3 col = mix(uGraphite, uInk, inked * stroke);
+    col = mix(col, uGlowEdge, front);
+    a = max(a, front * 0.8);
+    a *= drawn * (1.0 - uFade);
+    if (a < 0.02) discard;
+    gl_FragColor = vec4(col, a);
+  }
+`;
+
+export function createIconSketchMaterial(shared: EditorUniforms, icon: number): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: shared.uTime,
+      uBoil: shared.uBoil,
+      uInk: shared.uInk,
+      uGraphite: shared.uGraphite,
+      uGlowEdge: shared.uGlowEdge,
+      uGlowCore: shared.uGlowCore,
+      uPaper: shared.uPaper,
+      uIcon: { value: icon },
+      uDraw: { value: 0 },
+      uPrint: { value: 0 },
+      uFade: { value: 0 },
+    },
+    vertexShader: TELE_VERT,
+    fragmentShader: ICON_FRAG,
     transparent: true,
     depthWrite: false,
     polygonOffset: true,

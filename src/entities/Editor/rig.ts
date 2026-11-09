@@ -701,6 +701,14 @@ export class EditorRig {
         kL = 40;
         flat = true;
       }
+    } else if (fsm.summon.active && !dying) {
+      // drawing an enemy into the page: fingertips scribble small loops just above the floor
+      const sm = fsm.summon;
+      this.toLocal(sm.x, 0, sm.z, _v4);
+      const k = Math.min(1, sm.t / 0.35);
+      hL.copy(_v4).add(_v3.set(Math.cos(t * 9) * 0.45 * k, 0.35 + (1 - k) * 2.2, Math.sin(t * 9) * 0.35 * k));
+      kL = 9;
+      flat = true;
     } else if (this.roar > 0.05) {
       hL.copy(sL).add(_v3.set(2.2, 0.6 + this.roar * 0.7, 0.9));
     } else if (fsm.bowAmt > 0.05) {

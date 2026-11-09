@@ -181,7 +181,15 @@
     "klik": "ÇIT!",
     "redacted": "[SANSÜR]",
     "misprint": "BASKI HATASI!",
-    "shink": "ŞINK!"
+    "shink": "ŞINK!",
+    "cutBolt": "MÜREKKEP OKU BU SAYIDAN ÇIKARILDI",
+    "cutDash": "ATILMA BU SAYIDAN ÇIKARILDI",
+    "cutCrystal": "KRİSTAL BU SAYIDAN ÇIKARILDI",
+    "cutPrint": "BASKI BU SAYIDAN ÇIKARILDI",
+    "stetBolt": "AYNEN KALSIN! MÜREKKEP OKU GERİ DÖNDÜ",
+    "stetDash": "AYNEN KALSIN! ATILMA GERİ DÖNDÜ",
+    "stetCrystal": "AYNEN KALSIN! KRİSTAL GERİ DÖNDÜ",
+    "stetPrint": "AYNEN KALSIN! BASKI GERİ DÖNDÜ"
   },
   "style": {
     "label": "Editör notu: {grade}",

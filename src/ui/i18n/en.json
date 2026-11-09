@@ -181,7 +181,15 @@
     "klik": "KLIK!",
     "redacted": "[REDACTED]",
     "misprint": "MISPRINT!",
-    "shink": "SHINK!"
+    "shink": "SHINK!",
+    "cutBolt": "BOLT IS CUT FROM THIS ISSUE",
+    "cutDash": "DASH IS CUT FROM THIS ISSUE",
+    "cutCrystal": "THE CRYSTAL IS CUT FROM THIS ISSUE",
+    "cutPrint": "PRINTING IS CUT FROM THIS ISSUE",
+    "stetBolt": "STET! THE BOLT STAYS",
+    "stetDash": "STET! THE DASH STAYS",
+    "stetCrystal": "STET! THE CRYSTAL STAYS",
+    "stetPrint": "STET! PRINTING STAYS"
   },
   "style": {
     "label": "Editor's mark: {grade}",

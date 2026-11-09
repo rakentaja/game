@@ -13,9 +13,13 @@
  *
  * Camera: the player camera should blend its look target toward `editor.focus` by
  * `editor.cameraWeight` (0..1) so the 7 m Editor stays framed.
+ *
+ * Events produced (Idea Ledger): 'boss:rewrite' {verb, cut} (the player obeys; the UI shows it),
+ * 'boss:eraseStem' {stem, erased} (audio mutes / restores a music stem), 'spawn:request' with
+ * source 'editor:summon' for P2 hand-drawn enemies, 'caption:show' for the rewrite narration.
  */
 import * as THREE from 'three';
-import type { Damageable, GameContext } from '../../core/types';
+import type { Damageable, EnemyKind, GameContext, PlayerVerb } from '../../core/types';
 import { TUNING } from '../../data/tuning';
 import {
   type Attack,
@@ -23,11 +27,13 @@ import {
   CORE_INDEX,
   EditorFSM,
   type EditorSink,
+  type RewriteState,
   type WeakPointState,
   WP_COUNT,
 } from './fsm';
-import { InkCover, InkParticles, Shape, Telegraphs, WeakPointView } from './fx';
-import { createEditorUniforms, type EditorUniforms, PART } from './materials';
+import { IconDecal, InkCover, InkParticles, Shape, Telegraphs, WeakPointView } from './fx';
+import { createEditorUniforms, type EditorUniforms, ICON, PART } from './materials';
+import { PaintTrail } from './paint';
 import { EditorRig } from './rig';
 
 /** Onomatopoeia keys for `fx:panelCut` — matches the UI's `onomatopoeia.*` i18n set. */
@@ -39,8 +45,14 @@ export const EDITOR_WORDS = {
   final: 'krak',
 } as const;
 
+/** Rewrite caption keys (i18n `onomatopoeia.*`, so they also work as panel-cut words). */
+export function rewriteWord(verb: PlayerVerb, cut: boolean): string {
+  return `${cut ? 'cut' : 'stet'}${verb[0]!.toUpperCase()}${verb.slice(1)}`;
+}
+
 const WP_PART: Record<number, number> = { 0: PART.forearmR, 1: PART.handR, 2: PART.handL };
-const WP_ID_BASE = 9000;
+/** Damageable ids of the weak points are WP_ID_BASE + index. */
+export const WP_ID_BASE = 9000;
 
 const _v = new THREE.Vector3();
 const _p: [number, number, number] = [0, 0, 0];
@@ -68,6 +80,10 @@ class WeakPointTarget implements Damageable {
   get revealed(): boolean {
     if (!this.alive || !this.state.exposed) return false;
     return this.state.phase !== 3 || this.ed.coreLit;
+  }
+  /** The Editor is winding up an attack / summon (Close-Up Crits read this). */
+  get attacking(): boolean {
+    return this.ed.fsm.windingUp;
   }
   hit(amount: number, from: THREE.Vector3): void {
     this.ed.boltHit(this.state.index, amount, from);
@@ -105,8 +121,13 @@ export class Editor implements EditorSink {
   private inkT = 0;
   /** Player is dead / reprinting: the Editor holds its attacks. */
   playerDown = false;
-  /** True when the P3 core sits inside the crystal light (Blank Page). */
+  /** True when the P3 core sits inside the crystal light or the ink trail (Blank Page). */
   coreLit = false;
+  /** Blank Page, Reversed: where the player's ink has been (crystal trail + dashes). */
+  readonly paint = new PaintTrail();
+  private decalGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+  readonly sketchDecal: IconDecal;
+  readonly summonDecal: IconDecal;
   private group = new THREE.Group();
   private wpGeo = new THREE.IcosahedronGeometry(1, 3);
   private partTarget = new Float32Array(16);
@@ -132,7 +153,16 @@ export class Editor implements EditorSink {
     this.cover = new InkCover(this.uniforms);
     this.parent = opts.parent ?? ctx.render.scene;
     this.group.name = 'EditorBoss';
-    this.group.add(this.rig.root, this.telegraphs.group, this.particles.mesh, this.cover.mesh);
+    this.sketchDecal = new IconDecal(this.decalGeo, this.uniforms, 'Editor.rewriteSketch');
+    this.summonDecal = new IconDecal(this.decalGeo, this.uniforms, 'Editor.summon');
+    this.group.add(
+      this.rig.root,
+      this.telegraphs.group,
+      this.particles.mesh,
+      this.cover.mesh,
+      this.sketchDecal.mesh,
+      this.summonDecal.mesh,
+    );
     for (let i = 0; i < WP_COUNT; i++) {
       const st = this.fsm.wps[i]!;
       const t = new WeakPointTarget(this, st);
@@ -148,6 +178,13 @@ export class Editor implements EditorSink {
     this.offs.push(
       ctx.events.on('settings:changed', (e) => {
         if (e.key === 'difficulty') this.fsm.difficulty = ctx.settings.difficulty;
+      }),
+      // dash streaks paint the Blank Page (Reversed)
+      ctx.events.on('player:dash', (e) => {
+        if (!this.reversedLive) return;
+        const P = ctx.tuning.boss.paint;
+        const life = P.dashLife * (ctx.settings.difficulty === 'story' ? P.storyLifeMul : 1);
+        this.paint.addStreak(e.from[0], e.from[2], e.to[0], e.to[2], P.dashRadius, life);
       }),
       // dying mid-fight: the player reprints at boss_start and the Editor restarts the current
       // phase (earlier phases stay beaten) — never a dead end, never a full rerun
@@ -209,6 +246,10 @@ export class Editor implements EditorSink {
     this.uniforms.uInkOver.value = 0;
     this.uniforms.uTear.value = 0;
     this.uniforms.uHurt.value = 0;
+    this.uniforms.uReversed.value = 0;
+    this.paint.clear();
+    this.sketchDecal.hide();
+    this.summonDecal.hide();
     this.cover.set(0, 0.5, 0.5, 1);
     this.telegraphs.hideAll();
     this.particles.clear();
@@ -234,12 +275,15 @@ export class Editor implements EditorSink {
     }
     inp.playerRadius = ctx.tuning.player.radius;
     inp.revealRadius = ctx.reveal.radius;
+    f.reduceMotion = ctx.settings.reduceMotion;
 
     f.step(this.playerDown && f.state === 'phase' ? 0 : dt);
+    this.stepPaint(dt);
     this.rig.update(f, dt, inp.px, inp.pz);
     this.inkGuard(dt);
     this.syncWeakpoints(dt);
     this.telegraphs.update(f, dt);
+    this.syncDecals(dt);
     this.stepFx(dt);
     this.stepDeath(dt);
     this.stepUniforms(dt);
@@ -369,7 +413,62 @@ export class Editor implements EditorSink {
       const dz = crystal.z - core.z;
       this.coreLit = dx * dx + dz * dz <= (cr + 0.6) * (cr + 0.6);
     } else this.coreLit = false;
+    // Reversed: a weak point is hittable once painted in (the trail outlives the light)
+    if (this.reversedLive && this.paint.at(core.x, core.z) >= this.ctx.tuning.boss.paint.hitThreshold)
+      this.coreLit = true;
     for (const v of this.views) v.update(f, dt, this.ctx.tuning.boss.weakPointRadius, this.coreLit);
+  }
+
+  /** Phase 3 with the Reversed variant on (paint trail drives body visibility + hittability). */
+  get reversedLive(): boolean {
+    const f = this.fsm;
+    return (
+      this.ctx.tuning.boss.paint.enabled && f.phase === 3 && (f.state === 'phase' || f.state === 'transition')
+    );
+  }
+
+  private stepPaint(dt: number): void {
+    const f = this.fsm;
+    const P = this.ctx.tuning.boss.paint;
+    const u = this.uniforms;
+    const live = this.reversedLive;
+    if (live) {
+      const c = this.ctx.player?.crystalPos;
+      const life = P.life * (this.ctx.settings.difficulty === 'story' ? P.storyLifeMul : 1);
+      if (c && !this.playerDown)
+        this.paint.sample(c.x, c.z, this.ctx.reveal.radius * P.radiusMul, life, dt, P.every, P.minMove);
+      this.paint.step(dt);
+    } else if (f.state !== 'dying') this.paint.clear();
+    // dying: the paint holds while the Editor floods with ink
+    u.uReversed.value = P.enabled && (live || f.state === 'dying') ? 1 : 0;
+    const vecs = u.uPaint.value;
+    const slots = this.paint.slots;
+    for (let i = 0; i < vecs.length; i++) {
+      const s = slots[i];
+      if (s?.alive) vecs[i]!.set(s.x, s.z, s.r, s.strength);
+      else vecs[i]!.set(0, 0, 0, 0);
+    }
+  }
+
+  private syncDecals(dt: number): void {
+    const f = this.fsm;
+    const r = f.rewrite;
+    const RW = this.ctx.tuning.boss.rewrite;
+    const showSketch = r.cut && r.sketch && r.verb !== null && f.active;
+    this.sketchDecal.sync(
+      showSketch,
+      r.verb ? ICON[r.verb] : 0,
+      r.x,
+      r.z,
+      RW.sketchSize,
+      r.drawIn,
+      r.print,
+      dt,
+    );
+    const sm = f.summon;
+    const S = this.ctx.tuning.boss.summon;
+    const drawn = Math.min(1, sm.t / Math.max(0.05, S.drawTime));
+    this.summonDecal.sync(sm.active && f.active, ICON.summon, sm.x, sm.z, 1.1, drawn, 0, dt);
   }
 
   private stepFx(dt: number): void {
@@ -397,6 +496,22 @@ export class Editor implements EditorSink {
           0.9,
         );
       }
+    }
+    // the left hand scribbling a summon into the page
+    if (f.summon.active && !this.ctx.settings.reduceMotion && Math.random() < 0.5) {
+      const a = Math.random() * Math.PI * 2;
+      P.spawn(
+        f.summon.x + Math.cos(a) * 0.6,
+        0.2,
+        f.summon.z + Math.sin(a) * 0.6,
+        Math.cos(a) * 0.8,
+        1.2 + Math.random(),
+        Math.sin(a) * 0.8,
+        Shape.Crumb,
+        0.1 + Math.random() * 0.08,
+        C.graphite,
+        0.6,
+      );
     }
     P.update(dt);
   }
@@ -506,11 +621,17 @@ export class Editor implements EditorSink {
   onPhase(phase: BossPhase): void {
     this.ctx.events.emit('boss:phase', { phase });
     this.ctx.events.emit('boss:health', { value: this.fsm.health });
-    // Redraw: the Editor redraws its page too — erased lanes heal (they'd otherwise hide ghosts
-    // from the crystal for the rest of the fight)
-    if (phase === 2) this.ctx.reveal.reset();
     if (this.fsm.t > 0.01 && phase === 1) return; // intro already cut + roared
-    const word = phase === 1 ? EDITOR_WORDS.phase1 : phase === 2 ? EDITOR_WORDS.phase2 : EDITOR_WORDS.phase3;
+    // a rewrite transition carries its caption ("DASH IS CUT FROM THIS ISSUE") as the panel word
+    const rw = this.fsm.rewrite;
+    const word =
+      rw.cut && rw.verb
+        ? rewriteWord(rw.verb, true)
+        : phase === 1
+          ? EDITOR_WORDS.phase1
+          : phase === 2
+            ? EDITOR_WORDS.phase2
+            : EDITOR_WORDS.phase3;
     this.ctx.events.emit('fx:panelCut', { word, focus: this.focusTuple(), reason: `boss:phase${phase}` });
     this.ctx.events.emit('fx:shake', { intensity: 0.5, duration: 1.2 });
     this.ctx.audio.play('boss_roar', { volume: 1, rate: phase === 3 ? 0.75 : 0.95 });
@@ -565,16 +686,21 @@ export class Editor implements EditorSink {
 
   onErase(ax: number, az: number, bx: number, bz: number, hw: number): void {
     this.ctx.reveal.eraseStrip(ax, az, bx, bz, hw);
+    // Reversed: the eraser wipes the player's painted trail too
+    if (this.reversedLive) this.paint.erase(ax, az, bx, bz, hw);
   }
 
-  onPlayerHit(a: Attack): void {
+  onPlayerHit(a: Attack, player: number): void {
     const pl = this.ctx.player;
-    if (!pl) return;
+    // TODO(co-op): route hits on player > 0 to the partner player
+    if (!pl || player !== 0) return;
     pl.damage(this.ctx.tuning.boss.contactDamage, a.kind === 'drag' ? 'eraser' : 'editor');
   }
 
-  onSpawn(kind: 'smudge' | 'scribbler' | 'blot', x: number, z: number): void {
-    this.ctx.events.emit('spawn:request', { kind, x, z, source: 'editor' });
+  onSpawn(kind: EnemyKind, x: number, z: number): void {
+    const sm = this.fsm.summon;
+    const summoned = this.fsm.phase === 2 && sm.count > 0 && sm.x === x && sm.z === z;
+    this.ctx.events.emit('spawn:request', { kind, x, z, source: summoned ? 'editor:summon' : 'editor' });
     this.particles.burst(x, 0.3, z, 12, 2.5, 4, Shape.Shred, 0.3, this.particles.colors.paper, 1.2, 5);
   }
 
@@ -651,6 +777,46 @@ export class Editor implements EditorSink {
     this.ctx.audio.play('fanfare', { volume: 1 });
   }
 
+  onRedraw(_phase: BossPhase): void {
+    // the Editor redraws its page: every erased lane heals (they'd otherwise hide ghosts from the
+    // crystal for the rest of the fight); the FSM then erases this phase's new rim strips
+    this.ctx.reveal.reset();
+  }
+
+  onRewrite(verb: PlayerVerb, cut: boolean, printed: boolean): void {
+    this.ctx.events.emit('boss:rewrite', { verb, cut });
+    this.ctx.events.emit('caption:show', {
+      id: 'editor:rewrite',
+      key: `onomatopoeia.${rewriteWord(verb, cut)}`,
+    });
+    if (cut) return;
+    this.stopPrintLoop();
+    const r = this.fsm.rewrite;
+    if (printed) {
+      // the verb comes back with the ink it took to print it
+      this.ctx.player?.addEnergy(this.ctx.tuning.boss.rewrite.inkRefund);
+      this.ctx.events.emit('sketch:printed', { id: 'editor:rewrite' });
+      this.ctx.audio.play('sketch_done', { position: _v.set(r.x, r.y, r.z), volume: 1 });
+      this.particles.burst(r.x, 0.4, r.z, 22, 4, 4, Shape.Blob, 0.22, this.particles.colors.ink, 0.9, 10);
+    } else if (this.fsm.active) {
+      this.ctx.audio.play('page_turn', { volume: 0.6, rate: 1.2 });
+    }
+  }
+
+  onRewriteProgress(r: RewriteState): void {
+    this.ctx.events.emit('sketch:progress', { id: 'editor:rewrite', t: r.print });
+    if (!this.stopPrint) this.stopPrint = this.ctx.audio.loop('sketch_loop', { volume: 0.8 });
+    this.printingT = 0.15;
+  }
+
+  onEraseStem(stem: number, erased: boolean): void {
+    this.ctx.events.emit('boss:eraseStem', { stem, erased });
+  }
+
+  onSummonStart(_kind: EnemyKind, x: number, z: number): void {
+    this.ctx.audio.play('scribble_fire', { position: _v.set(x, 0.3, z), volume: 0.7, rate: 0.8 });
+  }
+
   // ─────────────────────────── helpers ───────────────────────────
   private focusTuple(): [number, number, number] {
     return [this.rig.focus.x, this.rig.focus.y, this.rig.focus.z];
@@ -692,6 +858,8 @@ export class Editor implements EditorSink {
   }
 
   dispose(): void {
+    // never leave the player with a cut verb or the soundtrack missing stems
+    this.fsm.releaseAll();
     this.stopLoops();
     for (const off of this.offs) off();
     for (const t of this.targets) this.ctx.targets.remove(t);
@@ -701,6 +869,9 @@ export class Editor implements EditorSink {
     this.particles.dispose();
     this.cover.dispose();
     for (const v of this.views) v.dispose();
+    this.sketchDecal.dispose();
+    this.summonDecal.dispose();
+    this.decalGeo.dispose();
     this.wpGeo.dispose();
     this.ctx.reveal.blankPage = 0;
   }

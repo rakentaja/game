@@ -317,6 +317,7 @@ describe('EditorFSM — difficulty & pacing', () => {
     const rng = makeRng(seed * 31 + 7);
     const decided = new Map<string, number>(); // window key → time to hit (or -1 skip)
     let walk = 0;
+    let rwWalk = 0;
     f.start();
     let t = 0;
     while (f.state !== 'dead' && t < 400) {
@@ -325,7 +326,15 @@ describe('EditorFSM — difficulty & pacing', () => {
       placeWeakpoints(f);
       f.input.crystalHeld = false;
       f.input.revealRadius = 3;
-      if (f.state === 'phase') {
+      // obeys rewrites: prints the verb sketch back after a short walk (when not mid-print)
+      const rw = f.rewrite;
+      const busy = f.phase === 2 && f.p2Active >= 0 && f.wps[f.p2Active]!.print > 0.05;
+      if (f.state === 'phase' && rw.cut && rw.sketch && rw.drawIn >= 1 && !busy) {
+        rwWalk += DT;
+        if (rwWalk > 2.2)
+          Object.assign(f.input, { crystalHeld: true, revealRadius: 7, cx: rw.x, cy: 1.8, cz: rw.z + 2 });
+      } else rwWalk = 0;
+      if (f.state === 'phase' && !(rw.cut && rwWalk > 2.2)) {
         if (f.phase === 2 && f.p2Active >= 0) {
           const w = f.wps[f.p2Active]!;
           if (w.drawIn >= 1 && !w.printed) {
@@ -344,7 +353,7 @@ describe('EditorFSM — difficulty & pacing', () => {
             decided.set(key, rng() < hitChance ? t + react : -1);
           }
           const at = decided.get(key)!;
-          if (at > 0 && t >= at) {
+          if (at > 0 && t >= at && !f.isCut('bolt')) {
             f.hitWeakpoint(w.index, 1);
             decided.set(key, w.phase === 2 ? t + 0.35 : -1);
           }
