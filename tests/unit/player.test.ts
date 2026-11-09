@@ -441,8 +441,8 @@ describe('Combat', () => {
     return { ...r, combat, step };
   }
 
-  it('fires at the nearest revealed target, costs ink, hits, and the first kill is a panel cut', () => {
-    const near = new Target(0, -4);
+  it('fires at the nearest revealed target, costs ink, hits, and a close-up kill is a panel cut', () => {
+    const near = Object.assign(new Target(0, -4), { attacking: false });
     const far = new Target(0, -9);
     const c = combatRig([far, near]);
     c.input.state.boltPressed = true;
@@ -451,6 +451,7 @@ describe('Combat', () => {
     expect(near.hits).toBe(1);
     expect(far.hits).toBe(0);
     expect(c.count('bolt:hit')).toBe(1);
+    near.attacking = true; // Close-Up Crits: killing a ghost mid-attack is critical
     c.input.state.boltPressed = true;
     c.step(1);
     expect(near.alive).toBe(false);

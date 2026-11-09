@@ -13,11 +13,13 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { EventBus, GameEvents } from '../core/events';
 import { haptics } from '../core/input/haptics';
 import type {
+  BeatAPI,
   CollisionAPI,
   DamageSource,
   GameContext,
   InputAPI,
   PlayerAPI,
+  PlayerVerb,
   RenderAPI,
   RevealAPI,
   RunStats,
@@ -76,6 +78,8 @@ export interface PlayerDeps {
   stats?: RunStats;
   /** Screen → world basis (CameraRig provides it). Defaults to camera looking down -Z. */
   view?: { forward: THREE.Vector3; right: THREE.Vector3 };
+  /** Shared beat clock (Ink Rhythm). Read at use time; may return null. */
+  beat?: () => BeatAPI | null | undefined;
 }
 
 interface Spring1 {
@@ -251,6 +255,10 @@ export class Player implements PlayerAPI {
   stepSfx: SfxId = 'step_grass';
   /** Exposed for HUD/debug. */
   anim: AnimStateName = 'idle';
+  /** Verbs the Editor has cut (`boss:rewrite`). Combat reads `bolt`; the player obeys the rest. */
+  readonly verbCut: Record<PlayerVerb, boolean> = { bolt: false, dash: false, crystal: false, print: false };
+  /** Increments on every dash start (combat uses it to reset per-dash state). */
+  dashSerial = 0;
 
   readonly energyStore: {
     value: number;
@@ -321,6 +329,11 @@ export class Player implements PlayerAPI {
   private upperName: string | null = null;
   private visible = true;
   private flickerT = 0;
+  // Snuff & Flare
+  private snuffedFlag = false;
+  private flareRun = -1;
+  private wantPrev = false;
+  private parryPending = false;
 
   private sfxPayload = { id: 'dash' as SfxId, position: [0, 0, 0] as [number, number, number], volume: 1 };
   private dashPayload = {
@@ -372,7 +385,22 @@ export class Player implements PlayerAPI {
         this.pages = deps.tuning.player.maxPages;
       }),
       ev.on('player:respawn', () => this.revive()),
+      ev.on('boss:rewrite', (e) => {
+        if (e.verb in this.verbCut) this.verbCut[e.verb] = e.cut;
+        if (e.cut && e.verb === 'dash') this.cancelDash();
+      }),
+      ev.on('page:start', () => {
+        this.restoreVerbs();
+        this.snuffedFlag = false;
+        this.flareRun = -1;
+      }),
+      ev.on('boss:defeated', () => this.restoreVerbs()),
     );
+  }
+
+  private restoreVerbs(): void {
+    const v = this.verbCut;
+    v.bolt = v.dash = v.crystal = v.print = false;
   }
 
   // ───────── PlayerAPI ─────────
@@ -397,6 +425,33 @@ export class Player implements PlayerAPI {
     return this.dashT >= 0;
   }
 
+  /** Seconds since the current dash started, or -1 when not dashing. */
+  get dashAge(): number {
+    return this.dashT;
+  }
+
+  /** Crystal snuffed to 0 m (Snuff & Flare). */
+  get snuffed(): boolean {
+    return this.snuffedFlag;
+  }
+
+  /** 0..1 progress of a running flare, -1 otherwise. */
+  get flare01(): number {
+    return this.flareRun < 0 ? -1 : clamp(this.flareRun / this.deps.tuning.combatPlus.snuff.flareTime, 0, 1);
+  }
+
+  /** Dash-Strike Nib kill: the next dash is ready right away. */
+  resetDashCooldown(): void {
+    this.dashCd = 0;
+  }
+
+  /** True once after a hit was dodged in the parry window (Ink Parry). */
+  consumeParry(): boolean {
+    const p = this.parryPending;
+    this.parryPending = false;
+    return p;
+  }
+
   /** 0 = ready, 1 = just used (HUD). */
   get dashCooldown01(): number {
     return clamp(this.dashCd / this.deps.tuning.dash.cooldown, 0, 1);
@@ -407,8 +462,16 @@ export class Player implements PlayerAPI {
   }
 
   damage(amount: number, source: DamageSource, from?: THREE.Vector3): void {
-    if (this.invulnerable || amount <= 0) return;
     const T = this.deps.tuning;
+    if (
+      amount > 0 &&
+      this.alive &&
+      this.dashI > 0 &&
+      this.dashT >= 0 &&
+      this.dashT <= T.combatPlus.parry.window
+    )
+      this.parryPending = true;
+    if (this.invulnerable || amount <= 0) return;
     const mul = T.difficulty[this.deps.settings.difficulty]?.damageTaken ?? 1;
     const dmg = amount * mul;
     this.pages = Math.max(0, this.pages - dmg);
@@ -509,6 +572,9 @@ export class Player implements PlayerAPI {
     this.hitT = -1;
     this.castT = -1;
     this.cinematic = null;
+    this.snuffedFlag = false;
+    this.flareRun = -1;
+    this.parryPending = false;
     if (this.energyStore.value < T.energy.start * 0.5) this.energyStore.reset(T.energy.start * 0.5);
     const d = this.acts.death;
     if (d) {
@@ -633,7 +699,8 @@ export class Player implements PlayerAPI {
     if (this.castT >= 0) target *= P.castMoveMul;
 
     // ── dash (buffered so a swipe slightly early still fires)
-    if (live && input.dashPressed) {
+    if (live && input.snuffPressed && !this.verbCut.crystal) this.toggleSnuff();
+    if (live && input.dashPressed && !this.verbCut.dash) {
       this.dashBuf = T.dash.buffer;
       const dx = input.dashDir.x;
       const dy = input.dashDir.y;
@@ -650,7 +717,8 @@ export class Player implements PlayerAPI {
     }
     if (this.dashBuf > 0) {
       this.dashBuf -= dt;
-      if (live && this.dashCd <= 0 && this.dashT < 0) this.startDash(this.dashBufX, this.dashBufZ);
+      if (live && this.dashCd <= 0 && this.dashT < 0 && !this.verbCut.dash)
+        this.startDash(this.dashBufX, this.dashBufZ);
       else if (this.dashBuf <= 0 && live && this.dashCd > 0) this.fizzle();
     }
 
@@ -685,7 +753,7 @@ export class Player implements PlayerAPI {
     this.position.y = this.deps.collision.groundHeight(this.position.x, this.position.z);
 
     // ── crystal / energy / reveal
-    this.stepCrystal(dt, live && input.crystalHeld);
+    this.stepCrystal(dt, live && input.crystalHeld && !this.verbCut.crystal);
 
     // ── death
     if (!this.alive) {
@@ -797,6 +865,8 @@ export class Player implements PlayerAPI {
     this.dashTrailAcc = T.dash.trailSpacing; // drop a source immediately at the start
     this.yaw = Math.atan2(this.dashDir.x, this.dashDir.z);
     this.castFace = 0;
+    this.dashSerial++;
+    if (this.deps.beat?.()?.onBeat()) this.deps.events.emit('combat:onBeat', { action: 'dash' });
     this.sq.x = 0.78; // anticipation squash, the spring snaps it into a stretch
     this.sq.v = 14;
     const p = this.dashPayload;
@@ -869,7 +939,21 @@ export class Player implements PlayerAPI {
     const E = this.energyStore;
     const cost = T.difficulty[this.deps.settings.difficulty]?.energyCost ?? 1;
     const hasInk = E.value > 0;
-    const held = wantHeld && hasInk;
+    // Snuff & Flare: snuffed = 0 m and no drain; a fresh hold flares straight to full size
+    const pressed = wantHeld && !this.wantPrev;
+    this.wantPrev = wantHeld;
+    if (this.snuffedFlag && pressed && hasInk) {
+      this.snuffedFlag = false;
+      this.flareRun = 0;
+      this.heldT = 1;
+      this.deps.events.emit('crystal:snuff', { snuffed: false });
+      haptics.pulse(T.haptics.dash, 0);
+    }
+    if (this.flareRun >= 0) {
+      this.flareRun += dt;
+      if (this.flareRun > T.combatPlus.snuff.flareTime) this.flareRun = -1;
+    }
+    const held = wantHeld && hasInk && !this.snuffedFlag;
     if (held) E.drain(C.drainPerSec * cost * dt);
     const powered = held && E.value > 0;
     if (powered !== this.crystalHeldFlag) {
@@ -893,7 +977,36 @@ export class Player implements PlayerAPI {
       r *= 1 - C.sputterAmp * Math.max(0, n) * (1 - E.value / C.lowEnergy);
     }
     if (!this.alive) r = C.radiusDim * Math.max(0, 1 - this.deathT);
-    this.deps.reveal.targetRadius = r * this.radiusMul;
+    // print cut by the Editor: the light can't quite reach printing size
+    if (this.verbCut.print) r = Math.min(r, T.sketch.requiredRadius * T.sketch.radiusSlack - 0.4);
+    const rv = this.deps.reveal;
+    if (this.snuffedFlag) {
+      rv.targetRadius = 0;
+      rv.radius *= Math.exp(-dt * 30);
+      if (rv.radius < 0.02) rv.radius = 0;
+      this.dimT = 1;
+      return;
+    }
+    rv.targetRadius = r * this.radiusMul;
+    if (this.flareRun >= 0) {
+      const k = clamp(this.flareRun / T.combatPlus.snuff.flareTime, 0, 1);
+      rv.radius = rv.targetRadius * (1 - (1 - k) ** 3);
+    }
+  }
+
+  private toggleSnuff(): void {
+    this.snuffedFlag = !this.snuffedFlag;
+    this.flareRun = -1;
+    if (this.snuffedFlag) {
+      this.heldT = 0;
+      if (this.crystalHeldFlag) {
+        this.crystalHeldFlag = false;
+        this.held = false;
+        this.deps.events.emit('crystal:hold', { held: false });
+      }
+      this.sfx('crystal_off');
+    } else this.sfx('crystal_on', 0.6);
+    this.deps.events.emit('crystal:snuff', { snuffed: this.snuffedFlag });
   }
 
   private stepJuice(dt: number): void {
@@ -1296,6 +1409,7 @@ export function installPlayer(
       render: ctx.render,
       stats: ctx.stats,
       view,
+      beat: () => ctx.beat,
     },
     energy,
   );
