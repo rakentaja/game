@@ -441,6 +441,20 @@ export class LettererKit extends KitBase {
     if (!this.remote && camera) this.captionBox(frameDt, camera);
   }
 
+  private capBest: Damageable | null = null;
+  private capD = 0;
+  private capCam: THREE.Camera | null = null;
+  private readonly capScan = (t: Damageable) => {
+    if (!t.alive || (t as Ghost).kind === undefined) return;
+    const P = this.host.position;
+    const d = (t.position.x - P.x) ** 2 + (t.position.z - P.z) ** 2;
+    if (d >= this.capD) return;
+    _v.copy(t.position).project(this.capCam!);
+    if (Math.abs(_v.x) < 0.92 && Math.abs(_v.y) < 0.9 && _v.z < 1) return; // on screen
+    this.capD = d;
+    this.capBest = t;
+  };
+
   /** Caption Box: point at the nearest off-screen ghost with a "MEANWHILE…" tag. */
   private captionBox(dt: number, cam: THREE.Camera): void {
     this.captionAcc += dt;
@@ -449,19 +463,11 @@ export class LettererKit extends KitBase {
     if (typeof document === 'undefined') return;
     const H = this.host;
     const R = H.tuning.heroes.letterer.captionRange;
-    let best: Damageable | null = null;
-    let bd = R * R;
-    H.targets?.forEach((t) => {
-      if (!t.alive || (t as Ghost).kind === undefined) return;
-      const dx = t.position.x - H.position.x;
-      const dz = t.position.z - H.position.z;
-      const d = dx * dx + dz * dz;
-      if (d >= bd) return;
-      _v.copy(t.position).project(cam);
-      if (Math.abs(_v.x) < 0.92 && Math.abs(_v.y) < 0.9 && _v.z < 1) return; // on screen
-      bd = d;
-      best = t;
-    });
+    this.capBest = null;
+    this.capD = R * R;
+    this.capCam = cam;
+    H.targets?.forEach(this.capScan);
+    const best = this.capBest as Damageable | null;
     let el = this.caption;
     if (!best) {
       if (el) el.hidden = true;
@@ -476,7 +482,7 @@ export class LettererKit extends KitBase {
     }
     el.textContent = H.t('heroes.meanwhile');
     el.hidden = false;
-    _v.copy((best as Damageable).position).project(cam);
+    _v.copy(best.position).project(cam);
     let sx = _v.x;
     let sy = _v.y;
     if (_v.z > 1) {
