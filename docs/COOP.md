@@ -47,8 +47,10 @@ and the Firebase relay (≈ 2 KB) loads only if it is configured and needed.
 
 - **Host** = room creator (slot 0). The guest sends `HELLO {v, token}` on peer-join. The
   host answers `WELCOME` + `ROSTER`, or `REJECT {full|version}`.
-- Hero pick: 4 slots (Inker, Penciller, Letterer, Colorist). Only Inker is selectable. The
-  others say "coming in this issue" (`PLAYABLE_HEROES` in `protocol.ts`).
+- Hero pick: 4 slots (Inker, Penciller, Letterer, Colorist), all selectable
+  (`PLAYABLE_HEROES` in `protocol.ts`). `coop:start.heroes[]` (by slot) drives both machines: the
+  local hero runtime loads this machine's kit, `RemotePlayer` the partner's (see "Heroes in
+  co-op").
 - Both players ready, then the host presses Start. `START {seed, at}` goes out, and both
   ends emit `start` (session) and `coop:start` (game bus). `at` is in host-clock ms;
   convert it with `session.hostNow()`.
@@ -94,7 +96,7 @@ crystals, dash trails and events, and only sent in full (RLE) on a (re)join.
 - `EVT` (42, reliable): batches of tick-tagged events — spawn/die/hit, scribbler fire params,
   hit requests/acks, sketch printed, trigger fired (checkpoints included), respawn, shared panel
   cut, page turn, page save, contact damage, ink claim, dash, boss phase/attack/weak point/STET,
-  `hero:action`.
+  `hero:action`, `perk`, `heal`, `combo`, `sprog` (wave 3).
 - `SYNC` (43, reliable): page save + reveal history for a joining/rejoining guest.
 - Every event batch and snapshot carries an **epoch** (bumped on each page build and checkpoint
   respawn on both machines); a guest holds batches of a future epoch until its own page is up.
@@ -105,7 +107,10 @@ the history ring around that tick (or is now) and refunds the bolt's ink otherwi
 damage favors the victim: scribbler strokes and Editor lanes are simulated on both machines from
 their spawn params and each tests only its own wizard; ghost contact runs on the host against
 the guest's newest position with a 0.1 m smaller radius. Hit-stop and crit cuts stay local;
-shared panel cuts, boss phase cuts and page turns are scheduled by the host at tick + 6.
+shared panel cuts, boss phase cuts, pair combos and page turns are scheduled by the host
+`leadTicks` (6 × 16.7 ms) ahead **in host-clock ms** (`NetCoop.leadAt`); both machines run them
+when their clock-synced `session.hostNow()` reaches that moment, so the guest plays them on the
+host's beat rather than on packet arrival (and a slow host's tick drift doesn't skew them).
 
 **Pages.** The page end fires only when both wizards are inside the exit rect (host decides).
 Downed wizards crawl as "UNFINISHED" sketches (40 % speed); the partner reprints them by holding
@@ -119,6 +124,36 @@ rejoin gets `SYNC`. Host gone: the guest shows a 10 s reconnect overlay, then cl
 reloads the page at the replicated checkpoint (printed sketches, spent triggers, cleared waves,
 boss phase + weak-point mask). Online pages never pause, and a 100 ms watchdog keeps ticking the
 sim when the tab loses rAF.
+
+## Heroes in co-op (wave 3)
+
+- **Puppet kits.** `RemotePlayer.setHero(id)` loads the partner's kit chunk (`loadKit`), sets
+  `kit.remote = true` and steps it itself. Every `hero:action` the local kit emits is copied (kits
+  reuse the payload) into an `EVT` `hero` event; the receiver replays it with
+  `applyRemoteAction(kit, ev, world)`, `world = true` only on the host. The puppet's side effects
+  (`hero:print`, ink drops, lures, shakes, panel cuts, sfx) go to the game bus; ink it would grant
+  goes to its owner (`claim`), pages via `heal`.
+- **Authority.** `Player.worldAuthority` → `HeroHost.authority` is false for the online guest's
+  own kit: it still plays its own-wizard effects (Inker Splash Page, balloon soak, gold-flat heal,
+  Halftone refund) but leaves damage, stun, pins, crushes, lures and colour statuses to the host's
+  puppet, which replicates through the usual snapshot rows and `hit` / `die` / `sketch` events.
+  Reveal (ink) is per machine, so every copy of an action adds its reveal sources.
+- **Perks** replicate as `perk` events; the **Splash meter** is per player (pid follows the slot;
+  `WizState.splash` feeds the partner card's bar). Local 2P: `?hero2=` picks player 2's kit; the
+  hero runtime offers each local player their own perk card.
+- **Pair combos** (`src/coop/combos.ts`, detection in `entities/heroes/combos.ts`): the host (or
+  the local 2P machine) runs the detector on both heroes' actions and resolves the gameplay
+  (`ComboEffects.play(h, world)`), then sends `combo` (with `at` in host-clock ms); the guest
+  replays the visuals + ink at that moment and emits `hero:combo`. A combo charges both Splash
+  meters and opens a ×2 charge window (`heroes.splash.comboBoostS`). Panel cut words are
+  `heroes.combo.*` (lazy heroes dictionary).
+- **Decoys** (Colorist) emit `hero:lure` where world effects resolve; `EnemySystem` targeting reads
+  live lures (1.5 s) closer than the enemy's wizard. The **Penciller** sees unlit ghosts as faint
+  pencil silhouettes on his own screen (`EnemyRenderer` `sight`).
+- **Guest mirrors:** live sketch print progress (`sprog`, 10 Hz, `SketchObjects.replica`), and the
+  boss block carries the rewrite sketch (verb, draw-in, print) and the P2 summon drawing.
+- New `EVT` kinds: `perk`, `heal`, `combo`, `sprog`. Wire bumps (same build on both ends):
+  `WizState.splash` (u8) and the boss block's `rw` / `sm` tail.
 
 **Boss co-op moments** (two players only): *Two-Page Spread* (P2 gutter wall, weak points print
 only from the other panel) and *STET* (P3 red-pencil circle; partner holds the crystal on it;

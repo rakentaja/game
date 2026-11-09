@@ -12,6 +12,8 @@ have emulation (headless Chromium, Lighthouse throttling, SwiftShader in CI).
 | Date | Commit | JS gzip (bundle-size.ts) | public/assets | First load (Lighthouse, transfer) | Notes |
 |---|---|---|---|---|---|
 | 2026-11-08 | main 0c25090 + ws2-qa | 330.7 KB / 350 | 1.53 MB (7 files) | 773 KiB | one 326 KB JS chunk; ~43 % unused at boot (three.js core) |
+| 2026-11-09 | wave 2 merge 087cf92 | 354.1 KB / 350 (over) | – | – | heroes + co-op hooks landed in the entry; 6 initial files |
+| 2026-11-09 | wave 3 integration | 343.3 KB / 350 | – | – | lazy: Turkish dictionary, cover + credits, settings screen, Editor's Hand, Daily variants, ghost playback; shared entry deps merged into one `boot` chunk (3 initial files); co-op, hero kits, combos, lobby, hero HUD stay lazy |
 
 ## Frame stats (emulated)
 
