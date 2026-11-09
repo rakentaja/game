@@ -21,8 +21,7 @@ import {
 } from '../core/types';
 import { TUNING } from '../data/tuning';
 import { type AutoplayBot, installAutoplay } from '../debug/autoplay';
-import { attachEditorBot } from '../entities/Editor/bot';
-import { type Editor, install as installEditor } from '../entities/Editor/Editor';
+import type { Editor } from '../entities/Editor/Editor';
 import { EnemyRenderer } from '../entities/enemies/EnemyRenderer';
 import { EnemySystem } from '../entities/enemies/EnemySystem';
 import { installPlayer, type Player } from '../entities/Player';
@@ -77,6 +76,19 @@ function freshStats(): RunStats {
     boltsHit: 0,
     bestPanel: null,
   };
+}
+
+type BossModule = {
+  installEditor: typeof import('../entities/Editor/Editor').install;
+  attachEditorBot: typeof import('../entities/Editor/bot').attachEditorBot;
+};
+let bossModule: Promise<BossModule> | null = null;
+/** THE EDITOR is code-split out of the initial bundle; prefetched from page 3 (or on demand). */
+function loadBoss(): Promise<BossModule> {
+  bossModule ??= Promise.all([import('../entities/Editor/Editor'), import('../entities/Editor/bot')]).then(
+    ([e, b]) => ({ installEditor: e.install, attachEditorBot: b.attachEditorBot }),
+  );
+  return bossModule;
 }
 
 export class Game {
@@ -293,7 +305,8 @@ export class Game {
     this.player.setControllable(true);
     this.ctx.input.setEnabled(true);
     this.mode = 'playing';
-    if (page === 'boss') this.setupBoss(def.anchors?.boss);
+    if (page === 'boss') this.setupBoss(def.anchors?.boss, await loadBoss());
+    else if (page === 3) void loadBoss();
     this.ctx.events.emit('state:change', { from: 'boot', to: page === 'boss' ? 'boss' : 'playing' });
     if (FLAGS.autoplay) {
       this.bot = installAutoplay(
@@ -307,7 +320,8 @@ export class Game {
         this.rig,
         { boss: () => this.editor?.fsm ?? null, projectiles: this.enemies.projectiles },
       );
-      if (this.editor) attachEditorBot(this.bot, this.editor, this.ctx, this.rig);
+      if (this.editor && bossModule)
+        (await bossModule).attachEditorBot(this.bot, this.editor, this.ctx, this.rig);
     }
     this.ui.showHud();
     this.margin?.setVisible(true);
@@ -315,9 +329,9 @@ export class Game {
     void this.ui.titleCard(page);
   }
 
-  private setupBoss(anchor: readonly number[] | undefined): void {
+  private setupBoss(anchor: readonly number[] | undefined, mod: BossModule): void {
     if (anchor) TUNING.boss.pos = [anchor[0] ?? 0, anchor[2] ?? -11];
-    this.editor = installEditor(this.ctx, {
+    this.editor = mod.installEditor(this.ctx, {
       loadAssets: false,
       seed: FLAGS.seed,
       dropInk: (x, z, n) => this.pickups.spawn(x, this.collision.groundHeight(x, z), z, n),
