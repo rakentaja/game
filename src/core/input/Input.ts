@@ -59,6 +59,7 @@ export class Input implements InputAPI {
     dashDir: new THREE.Vector2(),
     pausePressed: false,
     snuffPressed: false,
+    ultimatePressed: false,
     device: 'touch',
   };
 
@@ -79,6 +80,9 @@ export class Input implements InputAPI {
   private dashLatch = false;
   private pauseLatch = false;
   private snuffLatch = false;
+  private ultLatch = false;
+  /** Time of the last action-side tap (double-tap = ultimate). */
+  private lastTapAt = -1e9;
   private pairSeq = 0;
   private pairDone = 0;
   private dashX = 0;
@@ -133,11 +137,12 @@ export class Input implements InputAPI {
     s.dashPressed = false;
     s.pausePressed = false;
     s.snuffPressed = false;
+    s.ultimatePressed = false;
     if (!this.enabled) {
       // Pause stays live so Esc / Start can resume.
       this.pollPad();
       s.pausePressed = this.pauseLatch;
-      this.boltLatch = this.dashLatch = this.pauseLatch = this.snuffLatch = false;
+      this.boltLatch = this.dashLatch = this.pauseLatch = this.snuffLatch = this.ultLatch = false;
       s.move.set(0, 0);
       s.crystalHeld = false;
       return;
@@ -168,13 +173,14 @@ export class Input implements InputAPI {
     if (this.boltLatch) s.boltPressed = true;
     if (this.pauseLatch) s.pausePressed = true;
     if (this.snuffLatch) s.snuffPressed = true;
+    if (this.ultLatch) s.ultimatePressed = true;
     if (this.dashLatch) {
       s.dashPressed = true;
       if (this.dashX || this.dashY) s.dashDir.set(this.dashX, this.dashY);
       else if (s.move.lengthSq() > 0.01) s.dashDir.copy(s.move).normalize();
       else s.dashDir.set(0, 0);
     }
-    this.boltLatch = this.dashLatch = this.pauseLatch = this.snuffLatch = false;
+    this.boltLatch = this.dashLatch = this.pauseLatch = this.snuffLatch = this.ultLatch = false;
     this.dashX = this.dashY = 0;
   }
 
@@ -221,6 +227,10 @@ export class Input implements InputAPI {
 
   pressSnuff(): void {
     this.snuffLatch = true;
+  }
+
+  pressUltimate(): void {
+    this.ultLatch = true;
   }
 
   // ───────── Pointer ─────────
@@ -381,6 +391,14 @@ export class Input implements InputAPI {
         }
         this.boltLatch = true;
         haptics.pulse(g.tap);
+        {
+          // double-tap on the action side = ultimate (the first tap still attacked)
+          const now = performance.now();
+          if (now - this.lastTapAt <= TUNING.gesture.doubleTapMs) {
+            this.ultLatch = true;
+            this.lastTapAt = -1e9;
+          } else this.lastTapAt = now;
+        }
         break;
       case 'swipe':
         this.dashLatch = true;
@@ -414,7 +432,7 @@ export class Input implements InputAPI {
     }
     this.mouseCrystal = false;
     this.keys.clear();
-    this.boltLatch = this.dashLatch = this.pauseLatch = this.snuffLatch = false;
+    this.boltLatch = this.dashLatch = this.pauseLatch = this.snuffLatch = this.ultLatch = false;
     this.visuals?.clear();
     this.state.move.set(0, 0);
     this.state.crystalHeld = false;
@@ -444,6 +462,7 @@ export class Input implements InputAPI {
     if (c === 'Space' || c === 'KeyK') this.dashLatch = true;
     else if (c === 'KeyJ' || c === 'Enter') this.boltLatch = true;
     else if (c === 'KeyF') this.snuffLatch = true;
+    else if (c === 'KeyQ') this.ultLatch = true;
   };
 
   private onKeyUp = (e: KeyboardEvent): void => {
@@ -504,6 +523,7 @@ export class Input implements InputAPI {
     if (boltX || boltB) this.boltLatch = true;
     if (edge(3)) this.snuffLatch = true;
     if (edge(9)) this.pauseLatch = true;
+    if (edge(4)) this.ultLatch = true;
     edge(5);
     edge(6);
     edge(7);

@@ -10,6 +10,8 @@ export const FLAGS = {
   lang: q.get('lang') as null | 'tr' | 'en',
   /** Daily Issue for a date (?daily=YYYY-MM-DD, or ?daily=1 for today); null = normal run. */
   daily: q.get('daily'),
+  /** Hero for solo runs / the autoplay bot (?hero=inker|penciller|letterer|colorist). */
+  hero: q.get('hero'),
   /** Skip title/boot cinematic (e2e + dev). */
   skipIntro: q.get('skip') === '1' || q.get('autoplay') === '1',
 };

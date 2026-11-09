@@ -90,6 +90,8 @@ export const TUNING = {
     swipeMaxMs: 200,
     deadZone: 0.12,
     joyRadiusPx: 62,
+    /** Two action-side taps within this window = ultimate (heroes). */
+    doubleTapMs: 300,
   },
   sketch: {
     holdToPrint: 2,
@@ -699,6 +701,72 @@ export const TUNING = {
     tearPool: 96,
     splashLife: 0.55,
     tearLife: 1.6,
+  },
+  /** Heroes workstream (wave 2): hero kits, Splash meter, perks, combos. Seconds / metres. */
+  heroes: {
+    splash: { perKill: 0.06, perChain: 0.02, perPrint: 0.15, perCombo: 0.12 },
+    /** Non-Inker heroes: holding near an unprinted sketch / weak point powers a print light. */
+    printLight: { reach: 7.5 },
+    inker: {
+      feather: { radius: 1.5, life: 3 },
+      ultimate: { radius: 26, time: 4 },
+      bleedTrailLife: 5,
+      drybrush: { costMul: 0.5, radius: 5.5 },
+      chiaroscuro: { bonus: 1, band: 1.2 },
+      wetEdge: { radius: 0.9, life: 1.6 },
+      spotBlack: { bolts: 8, minHold: 0.5 },
+      indiaInk: 40,
+      /** hold ticks broadcast for combos (Hz). */
+      holdHz: 2,
+    },
+    penciller: {
+      ruler: { range: 13, speed: 22, cost: 3, pin: 2.5, longLead: 4, wpDamage: 1, lineLife: 3, ricochet: 6 },
+      trace: { spacing: 0.45, maxPoints: 96, life: 4, blueline: 7, closeDist: 0.9, minArea: 1.5 },
+      crush: { damage: 2, crosshatch: 1, perspective: 1, kirbyInk: 6 },
+      eraseStep: { iFrames: 0.4 },
+      /** Solo assist: a closed loop sparks a short reveal over its area. */
+      soloSpark: { life: 1.6, maxR: 4.5 },
+      layout: { size: 18, freeze: 3, range: 15 },
+    },
+    letterer: {
+      throwRange: 12,
+      speed: 15,
+      italics: 1.5,
+      beatWindowMs: 120,
+      /** POW / KAPOW / KA-BLAMM! damage and landing reveal radius. */
+      damage: [1, 2, 3],
+      reveal: [1.4, 1.9, 2.5],
+      flightReveal: 1.2,
+      letterLife: 3,
+      kerning: 6,
+      hitRadius: 1.5,
+      cost: 4,
+      balloon: { soak: 3, cost: 4, shove: 3.6, silence: 2, stun: 0.6 },
+      whoosh: { radius: 0.9, life: 2.5 },
+      storm: { radius: 2.6, damage: 3, life: 4, spacing: 2.4 },
+      ellipsis: { delay: 1, damage: 1, radius: 1.6 },
+      captionRange: 16,
+    },
+    colorist: {
+      halo: 1.2,
+      soloHalo: 2.5,
+      sprayRange: 7.5,
+      speed: 20,
+      damage: 1,
+      cost: 3,
+      cooldown: 0.22,
+      slow: 0.8,
+      burn: { ticks: 3, every: 0.5, damage: 0.5 },
+      goldInk: 8,
+      registration: { window: 5, damage: 3, splash: 1, radius: 2.6 },
+      bucket: { charge: 0.5, cost: 15, life: 10, radius: 3, trapping: 5, max: 3 },
+      goldHealEvery: 4,
+      decoys: { count: 3, life: 1.5, offset: 0.9 },
+      halftoneInk: 5,
+      overspray: 1.5,
+      fourColor: 1.5,
+    },
+    combos: { ttl: 3, wordRadius: 1, grindDist: 1.2, maxLoopPoints: 96 },
   },
   /** Audio workstream (Idea Ledger wave 1). Times in seconds unless the name says ms. */
   audio: {

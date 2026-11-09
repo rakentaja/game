@@ -93,6 +93,8 @@ export interface InputState {
   pausePressed: boolean;
   /** Two-finger tap / F / gamepad Y: snuff the crystal to 0 m (Snuff & Flare). Optional, edge. */
   snuffPressed?: boolean;
+  /** Double-tap on the action side / Q / gamepad LB: fire the hero ultimate (Splash meter). Optional, edge. */
+  ultimatePressed?: boolean;
   /** Last device used, for prompt icons. */
   device: 'touch' | 'keyboard' | 'gamepad';
 }

@@ -123,6 +123,11 @@ export interface GameEvents {
   'hero:perk': { pid: PlayerSlot; hero: HeroId; perk: string };
   /** [heroes/coop] A combo between two heroes triggered. */
   'hero:combo': { combo: string; position: [number, number, number] };
+  /**
+   * [heroes] A hero printed a sketch its own way (Penciller traced its outline). Game prints the
+   * nearest unprinted, enabled sketch within `radius` of (x, z).
+   */
+  'hero:print': { pid: PlayerSlot; x: number; z: number; radius: number };
   /** [coop] A player went down (co-op) / was reprinted by their partner. */
   'player:downed': { pid: PlayerSlot; position: [number, number, number] };
   'player:revived': { pid: PlayerSlot };

@@ -13,21 +13,27 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { EventBus, GameEvents } from '../core/events';
 import { haptics } from '../core/input/haptics';
 import type {
+  AudioAPI,
   BeatAPI,
   CollisionAPI,
   DamageSource,
   GameContext,
   InputAPI,
   PlayerAPI,
+  PlayerSlot,
   PlayerVerb,
   RenderAPI,
   RevealAPI,
   RunStats,
   Settings,
   SfxId,
+  TargetRegistry,
 } from '../core/types';
 import { PAL } from '../data/palette';
 import type { Tuning } from '../data/tuning';
+import type { HeroHost, HeroKit, PrintSpot } from './heroes/HeroKit';
+import { InkerKit } from './heroes/inker';
+import { SplashMeter } from './heroes/splash';
 
 export type AnimStateName =
   | 'idle'
@@ -80,7 +86,20 @@ export interface PlayerDeps {
   view?: { forward: THREE.Vector3; right: THREE.Vector3 };
   /** Shared beat clock (Ink Rhythm). Read at use time; may return null. */
   beat?: () => BeatAPI | null | undefined;
+  // ── hero kits (wave 2, all optional) ──
+  targets?: TargetRegistry;
+  /** Direct audio (pitched hero sfx); falls back to `sfx:play`. */
+  audio?: Pick<AudioAPI, 'play'>;
+  /** Scene node for hero VFX and render shared uniforms. */
+  scene?: () => THREE.Object3D | null;
+  shared?: () => Record<string, THREE.IUniform> | null;
+  t?: (key: string) => string;
+  /** Players in the session (solo assists when 1). */
+  playerCount?: () => number;
 }
+
+const NO_SPOTS: readonly PrintSpot[] = [];
+const _sfxV = new THREE.Vector3();
 
 interface Spring1 {
   x: number;
@@ -259,6 +278,16 @@ export class Player implements PlayerAPI {
   readonly verbCut: Record<PlayerVerb, boolean> = { bolt: false, dash: false, crystal: false, print: false };
   /** Increments on every dash start (combat uses it to reset per-dash state). */
   dashSerial = 0;
+  /** Hero kit (strategy for tap / hold / swipe / ultimate). Defaults to the Inker. */
+  kit: HeroKit;
+  /** Splash (ultimate) meter. */
+  readonly splash: SplashMeter;
+  /** Unprinted sketches / weak points (Game wires it; the non-Inker print light reads it). */
+  printSpots: (() => readonly PrintSpot[]) | null = null;
+  /** Combat installs its bolt ring here (Inker Spot Black). */
+  boltRing: ((n: number) => void) | null = null;
+  /** What hero kits may touch (see HeroHost). */
+  readonly host: HeroHost;
 
   readonly energyStore: {
     value: number;
@@ -334,6 +363,11 @@ export class Player implements PlayerAPI {
   private flareRun = -1;
   private wantPrev = false;
   private parryPending = false;
+  // hero kit verbs
+  private kitHolding = false;
+  private kitHoldT = 0;
+  private sketchedT = 0;
+  private cam: THREE.Camera | null = null;
 
   private sfxPayload = { id: 'dash' as SfxId, position: [0, 0, 0] as [number, number, number], volume: 1 };
   private dashPayload = {
@@ -379,8 +413,20 @@ export class Player implements PlayerAPI {
     this.object.add(this.smoke.mesh, this.flare.mesh);
     this.smoke.mesh.matrixAutoUpdate = true;
 
+    this.host = this.makeHost();
+    this.splash = new SplashMeter(deps.events, 0);
+    this.kit = new InkerKit();
+    this.kit.attach(this.host);
+
     const ev = deps.events;
     this.offs.push(
+      ev.on('enemy:died', (e) => {
+        if (!this.alive) return;
+        this.splash.kill();
+        this.kit.onKill?.(e.position[0], e.position[2], e.kind);
+      }),
+      ev.on('sketch:printed', () => this.splash.print()),
+      ev.on('hero:combo', () => this.splash.combo()),
       ev.on('checkpoint:reached', () => {
         this.pages = deps.tuning.player.maxPages;
       }),
@@ -396,6 +442,94 @@ export class Player implements PlayerAPI {
       }),
       ev.on('boss:defeated', () => this.restoreVerbs()),
     );
+  }
+
+  /** Swap the hero kit (hero select / co-op). The old kit is disposed. */
+  setKit(kit: HeroKit): void {
+    if (kit === this.kit) return;
+    if (this.kitHolding) this.kit.onRelease(this.kitHoldT);
+    this.kitHolding = false;
+    this.sketchedT = 0;
+    this.kit.dispose();
+    this.host.setMaxInkBonus?.(0);
+    this.kit = kit;
+    kit.attach(this.host);
+  }
+
+  private makeHost(): HeroHost {
+    const self = this;
+    const d = this.deps;
+    return {
+      get pid(): PlayerSlot {
+        return (self as { slot?: PlayerSlot }).slot ?? 0;
+      },
+      position: this.position,
+      facing: this.facing,
+      crystalPos: this.crystalPos,
+      events: d.events,
+      tuning: d.tuning,
+      settings: d.settings,
+      reveal: d.reveal,
+      get collision() {
+        return d.collision;
+      },
+      get targets() {
+        return d.targets ?? null;
+      },
+      get time() {
+        return self.time.value;
+      },
+      get playerCount() {
+        return d.playerCount?.() ?? 1;
+      },
+      get energy() {
+        return self.energyStore.value;
+      },
+      beat: () => d.beat?.() ?? null,
+      scene: () => d.scene?.() ?? self.object.parent,
+      shared: () => d.shared?.() ?? null,
+      t: (k) => d.t?.(k) ?? k,
+      spend: (n) => {
+        const E = self.energyStore as Player['energyStore'] & { spend?: (n: number) => boolean };
+        if (E.spend) return E.spend(n);
+        if (E.value + 1e-6 < n) return false;
+        E.drain(n);
+        return true;
+      },
+      addEnergy: (n) => {
+        self.energyStore.add(n);
+      },
+      heal: (n) => {
+        if (self.alive) self.pages = Math.min(d.tuning.player.maxPages, self.pages + n);
+      },
+      printables: () => self.printSpots?.() ?? NO_SPOTS,
+      sfx: (id, volume = 1, rate = 1, at) => {
+        const x = at ? at[0] : self.position.x;
+        const y = at ? at[1] : self.position.y + 1;
+        const z = at ? at[2] : self.position.z;
+        if (d.audio && rate !== 1) {
+          _sfxV.set(x, y, z);
+          d.audio.play(id, { position: _sfxV, volume, rate });
+          return;
+        }
+        const p = self.sfxPayload;
+        p.id = id;
+        p.volume = volume;
+        p.position[0] = x;
+        p.position[1] = y;
+        p.position[2] = z;
+        d.events.emit('sfx:play', p);
+      },
+      fireRing: (n) => self.boltRing?.(n),
+      setMaxInkBonus: (n) => {
+        const E = self.energyStore as { bonusMax?: number; max: number };
+        if ('bonusMax' in E) E.bonusMax = n;
+        else E.max = d.tuning.energy.max + n;
+      },
+      setSketched: (on) => {
+        self.sketchedT = on ? 1 : 0;
+      },
+    };
   }
 
   private restoreVerbs(): void {
@@ -428,6 +562,11 @@ export class Player implements PlayerAPI {
   /** Seconds since the current dash started, or -1 when not dashing. */
   get dashAge(): number {
     return this.dashT;
+  }
+
+  /** In a hero "sketch phase" (Penciller erase-step): attacks pass through. */
+  get sketched(): boolean {
+    return this.sketchedT > 0;
   }
 
   /** Crystal snuffed to 0 m (Snuff & Flare). */
@@ -472,6 +611,8 @@ export class Player implements PlayerAPI {
     )
       this.parryPending = true;
     if (this.invulnerable || amount <= 0) return;
+    if (this.kit.mods.ignore === source) return;
+    if (this.kit.onDamage?.(amount, source, from)) return;
     const mul = T.difficulty[this.deps.settings.difficulty]?.damageTaken ?? 1;
     const dmg = amount * mul;
     this.pages = Math.max(0, this.pages - dmg);
@@ -587,6 +728,7 @@ export class Player implements PlayerAPI {
   dispose(): void {
     for (const o of this.offs) o();
     this.offs.length = 0;
+    this.kit.dispose();
     this.mixer?.stopAllAction();
     this.object.removeFromParent();
   }
@@ -699,7 +841,15 @@ export class Player implements PlayerAPI {
     if (this.castT >= 0) target *= P.castMoveMul;
 
     // ── dash (buffered so a swipe slightly early still fires)
-    if (live && input.snuffPressed && !this.verbCut.crystal) this.toggleSnuff();
+    const mods = this.kit.mods;
+    if (live && input.snuffPressed && !this.verbCut.crystal && mods.baseCrystal) this.toggleSnuff();
+    // non-bolt heroes: the action-side tap is the kit's attack
+    if (live && input.boltPressed && !mods.baseBolt && !this.kit.remote) {
+      if (this.verbCut.bolt) this.fizzle();
+      else if (this.dashT < 0) this.kit.onTap();
+    }
+    if (live && input.ultimatePressed && !this.kit.remote && this.splash.consume()) this.kit.onUltimate();
+    if (mods.revealBoostT > 0) mods.revealBoostT = Math.max(0, mods.revealBoostT - dt);
     if (live && input.dashPressed && !this.verbCut.dash) {
       this.dashBuf = T.dash.buffer;
       const dx = input.dashDir.x;
@@ -752,8 +902,16 @@ export class Player implements PlayerAPI {
     this.facing.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
     this.position.y = this.deps.collision.groundHeight(this.position.x, this.position.z);
 
-    // ── crystal / energy / reveal
-    this.stepCrystal(dt, live && input.crystalHeld && !this.verbCut.crystal);
+    // ── crystal / energy / reveal (Inker: the crystal *is* the hold verb; others: kit hold + print light)
+    const wantHold = live && input.crystalHeld && !this.verbCut.crystal;
+    if (mods.baseCrystal) {
+      this.stepCrystal(dt, wantHold);
+      this.stepKitHold(dt, this.crystalHeldFlag);
+    } else {
+      this.stepKitHold(dt, wantHold);
+      this.stepCrystal(dt, this.kit.wantsPrintLight?.(wantHold) ?? false);
+    }
+    if (!this.kit.remote) this.kit.update(dt);
 
     // ── death
     if (!this.alive) {
@@ -785,6 +943,7 @@ export class Player implements PlayerAPI {
       this.flickerT += frameDt;
       vis = Math.floor(this.flickerT * this.deps.tuning.player.flickerHz) % 2 === 0;
     } else this.flickerT = 0;
+
     if (vis !== this.visible && this.model) {
       this.visible = vis;
       this.model.visible = vis;
@@ -814,10 +973,12 @@ export class Player implements PlayerAPI {
       const fs = 0.5 + this.flareT * 1.4;
       this.flare.mesh.scale.set(fs, fs, fs);
     } else this.flare.mesh.visible = false;
+    this.kit.render(alpha, frameDt, this.cam);
   }
 
   /** Orient the flare to a camera (harness / main call with the active camera each frame). */
   faceCamera(cam: THREE.Camera): void {
+    this.cam = cam;
     if (!this.flare.mesh.visible) return;
     _q.copy(this.object.quaternion).invert();
     this.flare.mesh.quaternion.copy(_q).multiply(cam.quaternion);
@@ -860,7 +1021,7 @@ export class Player implements PlayerAPI {
     this.dashT = 0;
     this.dashDone = 0;
     this.dashBuf = 0;
-    this.dashI = T.dash.iFrames;
+    this.dashI = this.kit.mods.dashIFrames ?? T.dash.iFrames;
     this.dashCd = T.dash.cooldown;
     this.dashTrailAcc = T.dash.trailSpacing; // drop a source immediately at the start
     this.yaw = Math.atan2(this.dashDir.x, this.dashDir.z);
@@ -877,6 +1038,7 @@ export class Player implements PlayerAPI {
     p.to[1] = this.position.y;
     p.to[2] = this.position.z + this.dashDir.z * T.dash.distance;
     this.deps.events.emit('player:dash', p);
+    if (!this.kit.remote) this.kit.onSwipe(p.from[0], p.from[2], this.dashDir.x, this.dashDir.z);
     this.sfx('dash');
     const a = this.acts.dash;
     if (a) {
@@ -900,14 +1062,24 @@ export class Player implements PlayerAPI {
     this.dashTrailAcc += step;
     if (this.dashTrailAcc >= D.trailSpacing) {
       this.dashTrailAcc = 0;
-      this.deps.reveal.addSource(this.position.x, this.position.z, D.trailRadius, D.trailLife);
+      this.deps.reveal.addSource(
+        this.position.x,
+        this.position.z,
+        D.trailRadius,
+        this.kit.mods.dashTrailLife ?? D.trailLife,
+      );
     }
     if (p >= 1 || (!moved && this.dashT > 0.03)) {
       this.dashT = -1;
       const carry = D.carry * this.deps.tuning.player.runSpeed;
       this.velocity.set(this.dashDir.x * carry, 0, this.dashDir.z * carry);
       this.sq.v -= 8; // landing squash
-      this.deps.reveal.addSource(this.position.x, this.position.z, D.trailRadius * 0.9, D.trailLife);
+      this.deps.reveal.addSource(
+        this.position.x,
+        this.position.z,
+        D.trailRadius * 0.9,
+        this.kit.mods.dashTrailLife ?? D.trailLife,
+      );
     }
   }
 
@@ -933,6 +1105,23 @@ export class Player implements PlayerAPI {
     this.deps.events.emit('fx:shake', { intensity: 0.8, duration: 0.5 });
   }
 
+  /** Hold-verb edges → kit hooks (local only). */
+  private stepKitHold(dt: number, holding: boolean): void {
+    if (this.kit.remote) return;
+    if (holding && !this.kitHolding) {
+      this.kitHolding = true;
+      this.kitHoldT = 0;
+      this.kit.onHoldStart();
+    } else if (!holding && this.kitHolding) {
+      this.kitHolding = false;
+      this.kit.onRelease(this.kitHoldT);
+    }
+    if (this.kitHolding) {
+      this.kitHoldT += dt;
+      this.kit.onHoldTick(dt);
+    }
+  }
+
   private stepCrystal(dt: number, wantHeld: boolean): void {
     const T = this.deps.tuning;
     const C = T.crystal;
@@ -954,7 +1143,8 @@ export class Player implements PlayerAPI {
       if (this.flareRun > T.combatPlus.snuff.flareTime) this.flareRun = -1;
     }
     const held = wantHeld && hasInk && !this.snuffedFlag;
-    if (held) E.drain(C.drainPerSec * cost * dt);
+    const mods = this.kit.mods;
+    if (held) E.drain(C.drainPerSec * cost * mods.holdCostMul * dt);
     const powered = held && E.value > 0;
     if (powered !== this.crystalHeldFlag) {
       this.crystalHeldFlag = powered;
@@ -968,8 +1158,11 @@ export class Player implements PlayerAPI {
     this.held = powered;
     this.heldT = clamp(this.heldT + (powered ? dt / C.growTime : -dt / C.shrinkTime), 0, 1);
     this.dimT = clamp(this.dimT + (E.value <= 0 ? dt / 0.5 : -dt / 0.35), 0, 1);
-    let r = C.radiusIdle + (C.radiusHeld - C.radiusIdle) * smooth(this.heldT);
-    r += (C.radiusDim - r) * this.dimT;
+    const idle = mods.radiusIdle ?? C.radiusIdle;
+    const full = mods.radiusHeld ?? C.radiusHeld;
+    let r = idle + (full - idle) * smooth(this.heldT);
+    r += ((mods.baseCrystal ? C.radiusDim : Math.min(C.radiusDim, idle)) - r) * this.dimT;
+    if (mods.revealBoostT > 0) r = Math.max(r, mods.revealBoostR);
     // low-ink sputter (visible flicker in the mask edge)
     if (E.value > 0 && E.value < C.lowEnergy) {
       this.lowSputter += dt * 11;
@@ -1410,9 +1603,15 @@ export function installPlayer(
       stats: ctx.stats,
       view,
       beat: () => ctx.beat,
+      targets: ctx.targets,
+      audio: ctx.audio,
+      scene: () => ctx.render.scene,
+      shared: () => ctx.render.shared ?? null,
+      t: (k) => ctx.t(k),
     },
     energy,
   );
+
   if (character) p.setModel(character.scene, character.animations);
   ctx.render.scene.add(p.object);
   ctx.player = p;

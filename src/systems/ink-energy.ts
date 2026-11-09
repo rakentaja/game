@@ -10,6 +10,8 @@ import type { Tuning } from '../data/tuning';
 
 export class InkEnergy {
   value: number;
+  /** Extra capacity on top of tuning.energy.max (Inker "India" perk; run-scoped). */
+  bonusMax = 0;
   private lastEmitted = -1;
 
   constructor(
@@ -20,7 +22,7 @@ export class InkEnergy {
   }
 
   get max(): number {
-    return this.tuning.energy.max;
+    return this.tuning.energy.max + this.bonusMax;
   }
 
   get empty(): boolean {

@@ -20,10 +20,11 @@ import {
   type SaveData,
 } from '../core/types';
 import { TUNING } from '../data/tuning';
-import { type AutoplayBot, installAutoplay } from '../debug/autoplay';
+import type { AutoplayBot } from '../debug/autoplay';
 import type { Editor } from '../entities/Editor/Editor';
 import { EnemyRenderer } from '../entities/enemies/EnemyRenderer';
 import { EnemySystem } from '../entities/enemies/EnemySystem';
+import { type HeroRuntime, installHeroes } from '../entities/heroes/runtime';
 import { installPlayer, type Player } from '../entities/Player';
 import { type FxSystem, installFx } from '../fx';
 import { InkRenderer, installRender, RevealSystem } from '../render';
@@ -112,6 +113,7 @@ export class Game {
   private meta!: MetaRuntime;
   private editor: Editor | null = null;
   private bot: AutoplayBot | null = null;
+  private heroes!: HeroRuntime;
   private page: PageId | null = null;
   private mode: 'boot' | 'title' | 'playing' | 'turning' | 'cover' = 'boot';
   private paused = false;
@@ -198,6 +200,7 @@ export class Game {
     this.energy = new InkEnergy(ctx.events, TUNING);
     this.player = installPlayer(ctx, character, this.rig, this.energy);
     this.combat = installCombat(ctx, this.player, this.energy);
+    this.heroes = installHeroes(ctx, this.player);
     this.pickups = installInkPickups(ctx);
     this.enemies = new EnemySystem(
       {
@@ -259,6 +262,7 @@ export class Game {
     this.setPaused(false);
     this.ui.hideHud();
     this.margin?.setVisible(false);
+    this.heroes.hide();
     this.teardownPage();
     this.page = null;
     this.meta.detachPage();
@@ -287,7 +291,8 @@ export class Game {
     Object.assign(this.ctx.stats, freshStats());
     this.style?.reset();
     this.meta.startRun(dailyDate ? 'daily' : 'main', dailyDate);
-    this.energy.add(TUNING.energy.max);
+    await this.heroes.prepare();
+    this.energy.add(this.energy.max);
     await this.startPage(page, checkpoint);
   }
 
@@ -309,6 +314,8 @@ export class Game {
     else if (page === 3) void loadBoss();
     this.ctx.events.emit('state:change', { from: 'boot', to: page === 'boss' ? 'boss' : 'playing' });
     if (FLAGS.autoplay) {
+      // the bot is a debug tool: lazy chunk, never in the initial bundle
+      const { installAutoplay } = await import('../debug/autoplay');
       this.bot = installAutoplay(
         this.ctx,
         {
@@ -325,6 +332,12 @@ export class Game {
     }
     this.ui.showHud();
     this.margin?.setVisible(true);
+    const lv = this.level;
+    this.heroes.pageStarted(page, {
+      sketches: def.sketches,
+      isPrinted: (id) => lv?.sketches.isPrinted(id) ?? true,
+      isEnabled: (id) => lv?.sketches.isEnabled(id) ?? false,
+    });
     this.meta.attachPage(page);
     void this.ui.titleCard(page);
   }
@@ -410,6 +423,18 @@ export class Game {
       if (!e.bonus) return;
       const [x, , z] = e.position;
       this.pickups.spawn(x, this.collision.groundHeight(x, z), z, e.amount);
+    });
+    // a hero printed a sketch its own way (Penciller traced around it)
+    ev.on('hero:print', (e) => {
+      const lv = this.level;
+      if (!lv || this.mode !== 'playing') return;
+      for (const s of lv.def.sketches) {
+        if (lv.sketches.isPrinted(s.id) || !lv.sketches.isEnabled(s.id)) continue;
+        if (Math.hypot(s.at[0] - e.x, s.at[2] - e.z) > e.radius) continue;
+        if (s.ambushTrigger) ev.emit('trigger:fired', { id: s.ambushTrigger });
+        lv.sketches.printNow(s.id);
+        break;
+      }
     });
     ev.on('spawn:request', (e) => {
       this.enemies.spawn(e.kind, e.x, e.z);
