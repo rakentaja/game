@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { PAL } from '../../data/palette';
 import type { Attack, EditorFSM, WeakPointState } from './fsm';
 import {
+  createIconSketchMaterial,
   createInkCoverMaterial,
   createParticleMaterial,
   createTelegraphMaterial,
@@ -102,6 +103,56 @@ export class Telegraphs {
   dispose(): void {
     this.geo.dispose();
     for (const v of this.views) v.mat.dispose();
+  }
+}
+
+// ───────────────────────────── Icon sketch decals ─────────────────────────────
+
+/**
+ * A flat pencil icon on the arena floor: the cut verb's sketch (print it to restore the verb) or
+ * the scribble where the Editor's left hand draws a summon. One mesh, icon swapped by uniform.
+ */
+export class IconDecal {
+  readonly mesh: THREE.Mesh;
+  readonly mat: THREE.ShaderMaterial;
+  private fade = 1;
+  constructor(geo: THREE.PlaneGeometry, u: EditorUniforms, name: string) {
+    this.mat = createIconSketchMaterial(u, 0);
+    this.mesh = new THREE.Mesh(geo, this.mat);
+    this.mesh.renderOrder = 2;
+    this.mesh.frustumCulled = false;
+    this.mesh.visible = false;
+    this.mesh.name = name;
+  }
+  /** show=false fades it out. draw/print 0..1. */
+  sync(
+    show: boolean,
+    icon: number,
+    x: number,
+    z: number,
+    size: number,
+    draw: number,
+    print: number,
+    dt: number,
+  ): void {
+    const U = this.mat.uniforms;
+    this.fade += ((show ? 0 : 1) - this.fade) * (1 - Math.exp(-(show ? 10 : 5) * dt));
+    if (show) {
+      this.mesh.position.set(x, 0.05, z);
+      this.mesh.scale.set(size * 2, 1, size * 2);
+      U.uIcon!.value = icon;
+      U.uDraw!.value = draw;
+      U.uPrint!.value = print;
+    }
+    U.uFade!.value = this.fade;
+    this.mesh.visible = this.fade < 0.98;
+  }
+  hide(): void {
+    this.fade = 1;
+    this.mesh.visible = false;
+  }
+  dispose(): void {
+    this.mat.dispose();
   }
 }
 

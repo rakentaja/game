@@ -16,8 +16,18 @@
  *  - P3: the core is exposed only while the Editor bows after every `bowEvery` sweeps; each hit
  *        staggers it and ends the window.
  * After a phase's target duration, damage is multiplied (anti-stall, never softlocks).
+ *
+ * Idea Ledger rework (wave 1):
+ *  - Rewrites: every transition into P2 / P3 redraws the arena (reveal re-inked, new rim strips
+ *    erased) and cuts one player verb for `rewrite.cutTime` s (`onRewrite(verb, true)`). A pencil
+ *    sketch of the verb's icon appears in the arena; printing it (crystal hold, like P2 weak
+ *    points) restores the verb early. Story cuts shorter and never cuts a survival verb.
+ *  - P1 drag strikes erase music stems cyclically; P2 prints restore them (`onEraseStem`).
+ *  - P2: the free left hand draws roster enemies into the arena (`onSummonStart` → `onSpawn`).
+ *  - `windingUp` is true while any attack (or a summon drawing) telegraphs (Close-Up Crits).
+ *  - Player input is array-capable (co-op prep): attacks aim at the nearest / alternating player.
  */
-import type { Difficulty, EnemyKind } from '../../core/types';
+import type { Difficulty, EnemyKind, PlayerVerb } from '../../core/types';
 import type { Tuning } from '../../data/tuning';
 
 export type EditorState = 'dormant' | 'intro' | 'phase' | 'transition' | 'dying' | 'dead';
@@ -88,9 +98,30 @@ export class WeakPointState {
   ) {}
 }
 
+/** One player as the Editor sees it (co-op prep). */
+export interface EditorPlayer {
+  x: number;
+  z: number;
+  /** Down / reprinting: never targeted, never hit. */
+  down: boolean;
+}
+
+export const MAX_PLAYERS = 4;
+
 export interface EditorInput {
+  /** Single-player position (also player 0 whenever `playerCount < 2`). */
   px: number;
   pz: number;
+  /**
+   * Co-op: when `playerCount >= 2`, `players[0..playerCount)` are used for targeting and hit
+   * tests instead of px/pz. Preallocated (MAX_PLAYERS); fill in place, never reallocate.
+   * TODO(co-op wave 3): "Two-Page Spread" — with two players on opposite halves of the arena the
+   * Editor splits the page: each hand works its own half (one target per hand, see pickTarget).
+   * TODO(co-op wave 3): "STET" — a downed partner standing in a printed rewrite sketch can
+   * proof-mark a cut verb back for both players (restoreRewrite(true) from a co-op trigger).
+   */
+  players: EditorPlayer[];
+  playerCount: number;
   playerRadius: number;
   cx: number;
   cy: number;
@@ -106,7 +137,8 @@ export interface EditorSink {
   onPhase(phase: BossPhase): void;
   onAttack(a: Attack, stage: 'telegraph' | 'strike' | 'end'): void;
   onErase(ax: number, az: number, bx: number, bz: number, halfWidth: number): void;
-  onPlayerHit(a: Attack): void;
+  /** `player` = index into input.players (0 in single player). */
+  onPlayerHit(a: Attack, player: number): void;
   onSpawn(kind: EnemyKind, x: number, z: number): void;
   onWeakpointHit(wp: WeakPointState, destroyed: boolean): void;
   onPrintProgress(wp: WeakPointState): void;
@@ -116,6 +148,14 @@ export interface EditorSink {
   onMusic(level: number): void;
   onDeathStart(): void;
   onDefeated(): void;
+  /** Arena redraw at a transition: re-ink the page (the FSM then erases the new strips via onErase). */
+  onRedraw(phase: BossPhase): void;
+  /** A player verb was cut from the issue (cut) or restored (printed = early via the sketch). */
+  onRewrite(verb: PlayerVerb, cut: boolean, printed: boolean): void;
+  onRewriteProgress(r: RewriteState): void;
+  onEraseStem(stem: number, erased: boolean): void;
+  /** P2: the left hand starts drawing an enemy at x,z (spawned via onSpawn after drawTime). */
+  onSummonStart(kind: EnemyKind, x: number, z: number): void;
 }
 
 export class NullSink implements EditorSink {
@@ -123,7 +163,7 @@ export class NullSink implements EditorSink {
   onPhase(_p: BossPhase): void {}
   onAttack(_a: Attack, _s: 'telegraph' | 'strike' | 'end'): void {}
   onErase(_ax: number, _az: number, _bx: number, _bz: number, _hw: number): void {}
-  onPlayerHit(_a: Attack): void {}
+  onPlayerHit(_a: Attack, _p: number): void {}
   onSpawn(_k: EnemyKind, _x: number, _z: number): void {}
   onWeakpointHit(_wp: WeakPointState, _d: boolean): void {}
   onPrintProgress(_wp: WeakPointState): void {}
@@ -133,6 +173,56 @@ export class NullSink implements EditorSink {
   onMusic(_l: number): void {}
   onDeathStart(): void {}
   onDefeated(): void {}
+  onRedraw(_p: BossPhase): void {}
+  onRewrite(_v: PlayerVerb, _c: boolean, _pr: boolean): void {}
+  onRewriteProgress(_r: RewriteState): void {}
+  onEraseStem(_s: number, _e: boolean): void {}
+  onSummonStart(_k: EnemyKind, _x: number, _z: number): void {}
+}
+
+/** The verb the Editor has cut, and the pencil sketch that prints it back. */
+export class RewriteState {
+  verb: PlayerVerb | null = null;
+  cut = false;
+  /** Seconds of cut left. */
+  t = 0;
+  /** Seconds until the sketch appears (counts through the transition). */
+  sketchDelay = 0;
+  /** Sketch present in the arena. */
+  sketch = false;
+  drawIn = 0;
+  print = 0;
+  x = 0;
+  y = 1;
+  z = 0;
+}
+
+/** P2 summon in progress (the left hand drawing an enemy). */
+export class SummonState {
+  active = false;
+  t = 0;
+  kind: EnemyKind = 'smudge';
+  x = 0;
+  z = 0;
+  /** Summons drawn this phase. */
+  count = 0;
+  timer = 0;
+}
+
+type RewriteTuning = Tuning['boss']['rewrite'];
+
+/**
+ * Which verb a rewrite into `phase` cuts. Never 'crystal' (it prints the restore sketch); on
+ * Story never a verb in `storyUnsafe` (falls back to 'print' / 'bolt').
+ */
+export function pickRewriteVerb(rw: RewriteTuning, phase: 2 | 3, story: boolean): PlayerVerb | null {
+  const list = story ? rw.storyRotation : rw.rotation;
+  if (!list.length) return null;
+  const v = list[(phase - 2) % list.length]!;
+  const bad = (x: PlayerVerb) => x === 'crystal' || (story && rw.storyUnsafe.includes(x));
+  if (!bad(v)) return v;
+  for (const f of ['print', 'bolt'] as const) if (!bad(f)) return f;
+  return null;
 }
 
 /** mulberry32 */
@@ -203,9 +293,19 @@ export class EditorFSM {
   /** P2: index into wps of the sketched point currently in play (-1 none). */
   p2Active = -1;
   p2Gap = 0;
+  readonly rewrite = new RewriteState();
+  readonly summon = new SummonState();
+  /** Bitmask of erased music stems. */
+  stemsErased = 0;
+  private stemCursor = 0;
+  /** Set by the Editor from settings: slower Blank Page white-out. */
+  reduceMotion = false;
+  private aimSerial = 0;
   readonly input: EditorInput = {
     px: 0,
     pz: 6,
+    players: Array.from({ length: MAX_PLAYERS }, () => ({ x: 0, z: 6, down: false })),
+    playerCount: 0,
     playerRadius: 0.35,
     cx: 0,
     cy: 1.8,
@@ -265,8 +365,40 @@ export class EditorFSM {
     return total > 0 ? left / total : 1;
   }
 
+  /** True while `verb` is cut from the issue. */
+  isCut(verb: PlayerVerb): boolean {
+    return this.rewrite.cut && this.rewrite.verb === verb;
+  }
+
+  /** The Editor is winding up (any attack telegraphing, or the left hand drawing a summon). */
+  get windingUp(): boolean {
+    if (!this.active) return false;
+    for (const a of this.attacks) if (a.active && a.stage === 'telegraph') return true;
+    return this.summon.active;
+  }
+
+  get stemCount(): number {
+    return Math.max(0, Math.min(16, this.tuning.boss.stems.count | 0));
+  }
+
   // ───────────── lifecycle ─────────────
+  /**
+   * Give back everything the Editor took from the player / soundtrack (cut verb, erased stems).
+   * Safe to call any time; emits only for things actually taken.
+   */
+  releaseAll(): void {
+    this.restoreRewrite(false);
+    this.rewrite.sketch = false;
+    this.rewrite.sketchDelay = 0;
+    this.restoreAllStems();
+    this.summon.active = false;
+  }
+
   reset(): void {
+    this.releaseAll();
+    this.stemCursor = 0;
+    this.summon.count = 0;
+    this.summon.timer = 0;
     this.state = 'dormant';
     this.phase = 1;
     this.t = 0;
@@ -326,6 +458,7 @@ export class EditorFSM {
     if (this.state === 'dormant' || this.state === 'dead') return;
     this.t += dt;
     if (this.state !== 'dying') this.fightTime += dt;
+    if (this.state === 'transition' || this.state === 'phase') this.stepRewrite(dt);
     for (const w of this.wps) if (w.flash > 0) w.flash = Math.max(0, w.flash - dt);
     if (this.staggerT > 0) this.staggerT = Math.max(0, this.staggerT - dt);
 
@@ -335,7 +468,12 @@ export class EditorFSM {
         break;
       case 'transition':
         this.stepAttacks(dt, false);
-        if (this.phase === 3) this.blank = Math.min(1, this.t / this.tuning.boss.phase3.blankFade);
+        if (this.phase === 3) {
+          const fade =
+            this.tuning.boss.phase3.blankFade *
+            (this.reduceMotion ? this.tuning.boss.paint.reduceMotionFadeMul : 1);
+          this.blank = Math.min(1, this.t / fade);
+        }
         if (this.t >= this.tuning.boss.transitionTime) this.beginPhase();
         break;
       case 'phase':
@@ -363,8 +501,113 @@ export class EditorFSM {
     for (const a of this.attacks) if (a.active && a.stage === 'telegraph') this.endAttack(a);
     for (const w of this.wps) w.exposed = false;
     this.blank = 0;
+    this.summon.active = false;
+    // Rewrite: pick the verb before onPhase so the panel cut can carry its caption word
+    const verb =
+      !fromIntro && phase >= 2 && this.tuning.boss.rewrite.enabled
+        ? pickRewriteVerb(this.tuning.boss.rewrite, phase as 2 | 3, this.story)
+        : null;
+    this.restoreRewrite(false);
+    if (verb) this.prepareRewrite(verb, phase as 2 | 3);
     this.sink.onPhase(phase);
     this.sink.onMusic(phase === 1 ? 0.4 : phase === 2 ? 0.7 : 1);
+    if (phase >= 2) this.redraw(phase);
+    if (verb) this.sink.onRewrite(verb, true, false);
+  }
+
+  // ───────────── rewrites ─────────────
+  private redraw(phase: BossPhase): void {
+    this.sink.onRedraw(phase);
+    const strips = phase === 2 ? this.tuning.boss.redraw.p2 : this.tuning.boss.redraw.p3;
+    for (const s of strips) this.sink.onErase(s[0], s[1], s[2], s[3], s[4]);
+  }
+
+  private prepareRewrite(verb: PlayerVerb, phase: 2 | 3): void {
+    const rw = this.tuning.boss.rewrite;
+    const r = this.rewrite;
+    r.verb = verb;
+    r.cut = true;
+    r.t = this.story ? rw.storyCutTime : rw.cutTime;
+    r.sketch = false;
+    r.sketchDelay = this.tuning.boss.transitionTime + rw.sketchDelay;
+    r.drawIn = 0;
+    r.print = 0;
+    const pos = rw.sketchPos[(phase - 2) % Math.max(1, rw.sketchPos.length)] ?? [0, 4];
+    r.x = pos[0];
+    r.z = pos[1];
+    r.y = rw.sketchY;
+  }
+
+  /** Give the cut verb back (printed = early, via the sketch). No-op when nothing is cut. */
+  restoreRewrite(printed: boolean): void {
+    const r = this.rewrite;
+    if (!r.cut || !r.verb) return;
+    r.cut = false;
+    r.sketch = false;
+    r.t = 0;
+    this.sink.onRewrite(r.verb, false, printed);
+  }
+
+  private stepRewrite(dt: number): void {
+    const r = this.rewrite;
+    if (!r.cut) return;
+    r.t -= dt;
+    if (r.t <= 0) {
+      this.restoreRewrite(false);
+      return;
+    }
+    if (!r.sketch) {
+      r.sketchDelay -= dt;
+      if (r.sketchDelay <= 0) {
+        r.sketch = true;
+        r.drawIn = 0;
+        r.print = 0;
+      }
+      return;
+    }
+    const rw = this.tuning.boss.rewrite;
+    if (r.drawIn < 1) {
+      r.drawIn = Math.min(1, r.drawIn + dt / Math.max(0.05, rw.drawIn));
+      return;
+    }
+    if (this.state !== 'phase') return;
+    const i = this.input;
+    const dx = i.cx - r.x;
+    const dy = i.cy - r.y;
+    const dz = i.cz - r.z;
+    const inRange = dx * dx + dy * dy + dz * dz <= rw.printRadius * rw.printRadius;
+    const charging = i.crystalHeld && i.revealRadius >= rw.printRadius * 0.9 && inRange;
+    if (charging) {
+      r.print = Math.min(1, r.print + dt / Math.max(0.05, rw.printHold));
+      this.sink.onRewriteProgress(r);
+    } else r.print = Math.max(0, r.print - dt * rw.printDecay);
+    if (r.print >= 1) this.restoreRewrite(true);
+  }
+
+  // ───────────── soundtrack stems ─────────────
+  private eraseNextStem(): void {
+    const n = this.stemCount;
+    if (n <= 0) return;
+    const stem = this.stemCursor % n;
+    this.stemCursor++;
+    this.stemsErased |= 1 << stem;
+    this.sink.onEraseStem(stem, true);
+  }
+
+  /** Restore the lowest erased stem (P2 prints). Returns the stem or -1. */
+  private restoreOneStem(): number {
+    for (let s = 0; s < this.stemCount; s++)
+      if (this.stemsErased & (1 << s)) {
+        this.stemsErased &= ~(1 << s);
+        this.sink.onEraseStem(s, false);
+        return s;
+      }
+    return -1;
+  }
+
+  private restoreAllStems(): void {
+    while (this.stemsErased && this.restoreOneStem() >= 0);
+    this.stemsErased = 0;
   }
 
   private beginPhase(): void {
@@ -386,7 +629,12 @@ export class EditorFSM {
     if (this.phase === 2) {
       this.p2Active = -1;
       this.p2Gap = 0.6;
+      this.summon.active = false;
+      this.summon.count = 0;
+      this.summon.timer = b.summon.first;
     }
+    // the final page has its whole soundtrack back
+    if (this.phase === 3) this.restoreAllStems();
     this.attackTimer =
       this.phase === 1
         ? 1.0
@@ -396,6 +644,7 @@ export class EditorFSM {
   }
 
   private beginDeath(): void {
+    this.releaseAll();
     for (const a of this.attacks) if (a.active) this.endAttack(a);
     for (const w of this.wps) {
       w.exposed = false;
@@ -438,9 +687,48 @@ export class EditorFSM {
     if (this.aliveCount(1) === 0) this.beginTransition(2);
   }
 
+  private stepSummon(dt: number): void {
+    const S = this.tuning.boss.summon;
+    const sm = this.summon;
+    const kinds = this.story ? S.storyKinds : S.kinds;
+    const max = this.story ? S.storyMax : S.max;
+    if (sm.active) {
+      sm.t += dt;
+      if (sm.t >= S.drawTime) {
+        sm.active = false;
+        sm.timer = S.every * this.mul('intervalMul');
+        this.sink.onSpawn(sm.kind, sm.x, sm.z);
+      }
+      return;
+    }
+    if (sm.count >= max || !kinds.length || this.staggerT > 0) return;
+    sm.timer -= dt;
+    if (sm.timer > 0) return;
+    // somewhere in the arena's front half, away from the target player
+    const [cx, cz] = this.tuning.boss.arena;
+    this.pickTarget();
+    let x = cx;
+    let z = cz;
+    for (let k = 0; k < 6; k++) {
+      const ang = (this.rng() - 0.5) * Math.PI * 1.3;
+      const r = S.minR + this.rng() * (S.maxR - S.minR);
+      x = cx + Math.sin(ang) * r;
+      z = cz + Math.cos(ang) * r * 0.8;
+      if (Math.hypot(x - this.aimX, z - this.aimZ) >= S.awayFromPlayer) break;
+    }
+    sm.kind = kinds[sm.count % kinds.length]!;
+    sm.count++;
+    sm.active = true;
+    sm.t = 0;
+    sm.x = x;
+    sm.z = z;
+    this.sink.onSummonStart(sm.kind, x, z);
+  }
+
   private stepP2(dt: number): void {
     const p2 = this.tuning.boss.phase2;
     const reqR = p2.printRadius;
+    this.stepSummon(dt);
     if (this.p2Active < 0) {
       this.p2Gap -= dt;
       if (this.p2Gap <= 0) {
@@ -469,7 +757,7 @@ export class EditorFSM {
       const dy = i.cy - w.y;
       const dz = i.cz - w.z;
       const inRange = dx * dx + dy * dy + dz * dz <= reqR * reqR;
-      const charging = i.crystalHeld && i.revealRadius >= reqR * 0.9 && inRange;
+      const charging = i.crystalHeld && i.revealRadius >= reqR * 0.9 && inRange && !this.isCut('print');
       const before = w.print;
       if (charging) w.print = Math.min(1, w.print + dt / p2.printHold);
       else w.print = Math.max(0, w.print - dt * p2.printDecay);
@@ -478,6 +766,7 @@ export class EditorFSM {
         w.printed = true;
         w.printedT = p2.printedLife * this.mul('windowMul');
         this.sink.onPrinted(w);
+        this.restoreOneStem();
       }
       w.exposed = false;
     } else {
@@ -531,6 +820,62 @@ export class EditorFSM {
       else this.sink.onStagger();
     }
     return true;
+  }
+
+  // ───────────── players (co-op prep) ─────────────
+  /** Aim point chosen by pickTarget() (world XZ). */
+  aimX = 0;
+  aimZ = 6;
+  /** Index of the player the last attack aimed at. */
+  aimIndex = 0;
+
+  /** Number of players the Editor considers (≥ 1; px/pz when playerCount < 2). */
+  get playerTotal(): number {
+    return this.input.playerCount >= 2 ? Math.min(MAX_PLAYERS, this.input.playerCount) : 1;
+  }
+  playerX(i: number): number {
+    return this.input.playerCount >= 2 ? this.input.players[i]!.x : this.input.px;
+  }
+  playerZ(i: number): number {
+    return this.input.playerCount >= 2 ? this.input.players[i]!.z : this.input.pz;
+  }
+  private playerDown(i: number): boolean {
+    return this.input.playerCount >= 2 && this.input.players[i]!.down;
+  }
+
+  /**
+   * Choose whom the next attack aims at: the single player, else (tuning.boss.coop.targetMode)
+   * the nearest standing player to the Editor, or alternate between standing players.
+   */
+  pickTarget(): number {
+    const n = this.playerTotal;
+    let idx = 0;
+    if (n > 1) {
+      if (this.tuning.boss.coop.targetMode === 'alternate') {
+        for (let k = 0; k < n; k++) {
+          const c = (this.aimSerial + k) % n;
+          if (!this.playerDown(c)) {
+            idx = c;
+            break;
+          }
+        }
+        this.aimSerial = idx + 1;
+      } else {
+        let best = Number.POSITIVE_INFINITY;
+        for (let k = 0; k < n; k++) {
+          if (this.playerDown(k)) continue;
+          const d = Math.hypot(this.playerX(k) - this.bossX, this.playerZ(k) - this.bossZ);
+          if (d < best) {
+            best = d;
+            idx = k;
+          }
+        }
+      }
+    }
+    this.aimIndex = idx;
+    this.aimX = this.playerX(idx);
+    this.aimZ = this.playerZ(idx);
+    return idx;
   }
 
   // ───────────── attacks ─────────────
@@ -587,10 +932,10 @@ export class EditorFSM {
   }
 
   private setupDrag(a: Attack, hw: number, tele: number, travel: number, recover: number): void {
-    const i = this.input;
+    this.pickTarget();
     const [cx, cz, r] = this.tuning.boss.arena;
-    let dx = i.px - this.bossX;
-    let dz = i.pz - this.bossZ;
+    let dx = this.aimX - this.bossX;
+    let dz = this.aimZ - this.bossZ;
     const len = Math.hypot(dx, dz) || 1;
     dx /= len;
     dz /= len;
@@ -628,10 +973,10 @@ export class EditorFSM {
     tele: number,
     recover: number,
   ): void {
-    const i = this.input;
+    this.pickTarget();
     const [cx, cz, r] = this.tuning.boss.arena;
-    let x = i.px;
-    let z = i.pz;
+    let x = this.aimX;
+    let z = this.aimZ;
     const ox = x - cx;
     const oz = z - cz;
     const d = Math.hypot(ox, oz);
@@ -680,6 +1025,7 @@ export class EditorFSM {
           a.t = 0;
           this.sink.onAttack(a, 'strike');
           if (a.kind !== 'drag') this.circleImpact(a);
+          else if (this.phase === 1 && this.state === 'phase') this.eraseNextStem();
         }
       } else if (a.stage === 'strike') {
         if (a.kind === 'drag') this.dragStep(a);
@@ -718,12 +1064,16 @@ export class EditorFSM {
     const e = k * k * (3 - 2 * k); // smoothstep: slam, accelerate, settle
     const nx = a.ax + (a.bx - a.ax) * e;
     const nz = a.az + (a.bz - a.az) * e;
-    const i = this.input;
     if (!a.hitDone) {
-      const rr = a.hw + i.playerRadius;
-      if (distSqToSegment(i.px, i.pz, a.headX, a.headZ, nx, nz) <= rr * rr) {
-        a.hitDone = true;
-        this.sink.onPlayerHit(a);
+      const rr = a.hw + this.input.playerRadius;
+      for (let p = 0; p < this.playerTotal; p++) {
+        if (this.playerDown(p)) continue;
+        if (distSqToSegment(this.playerX(p), this.playerZ(p), a.headX, a.headZ, nx, nz) <= rr * rr) {
+          // TODO(co-op): per-player hitDone so one sweep can catch both players
+          a.hitDone = true;
+          this.sink.onPlayerHit(a, p);
+          break;
+        }
       }
     }
     if (nx !== a.headX || nz !== a.headZ) this.sink.onErase(a.headX, a.headZ, nx, nz, a.hw);
@@ -746,13 +1096,15 @@ export class EditorFSM {
   }
 
   private circleImpact(a: Attack): void {
-    const i = this.input;
-    const dx = i.px - a.ax;
-    const dz = i.pz - a.az;
-    const rr = a.hw + i.playerRadius;
-    if (dx * dx + dz * dz <= rr * rr) {
-      a.hitDone = true;
-      this.sink.onPlayerHit(a);
+    const rr = a.hw + this.input.playerRadius;
+    for (let p = 0; p < this.playerTotal; p++) {
+      if (this.playerDown(p)) continue;
+      const dx = this.playerX(p) - a.ax;
+      const dz = this.playerZ(p) - a.az;
+      if (dx * dx + dz * dz <= rr * rr) {
+        a.hitDone = true;
+        this.sink.onPlayerHit(a, p);
+      }
     }
     if (a.kind === 'stab' && this.rng() < this.tuning.boss.phase2.scribblerChance) {
       this.sink.onSpawn('scribbler', a.ax, a.az);
