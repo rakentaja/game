@@ -74,5 +74,6 @@ export function sanitize(s: Partial<Settings>): Settings {
     quality: oneOf(s.quality, ['auto', 'low', 'high'] as const, d.quality),
     lang: oneOf(s.lang, ['en', 'tr'] as const, d.lang),
     difficulty: oneOf(s.difficulty, ['story', 'normal'] as const, d.difficulty),
+    ghost: oneOf(s.ghost, ['daily', 'always', 'off'] as const, d.ghost),
   };
 }

@@ -102,6 +102,8 @@ uniform vec2 uRes;
 uniform float uDpr, uTime, uBoilSeed;
 uniform float uPeriod, uAngle, uScreenAmt, uEdgeW, uGrain, uMisreg, uVignette;
 uniform float uUseEdges, uUseScreen, uUsePaper;
+// lightning: 0 = off, 1 = full two-tone ink/cream print
+uniform float uFlash;
 uniform vec3 uInk, uPaper, uPencilDark, uGlowCore, uRed1, uRed2;
 // panels
 uniform int uPanelCount;
@@ -289,6 +291,11 @@ void main() {
       if (st.r > 0.5) col = uInk;
     }
   }
+  // ── lightning: the page prints in two tones for a couple of frames ──
+  if (uFlash > 0.0) {
+    float fl = dot(col, vec3(0.3, 0.59, 0.11));
+    col = mix(col, fl > 0.3 ? uPaper : uInk, uFlash);
+  }
   if (uDebugView == 1) {
     // reveal mask: paper white, inked black, wet rim / fx orange
     col = cls > 0.75 ? uInk : (cls > 0.25 ? uGlowCore : uPaper);
@@ -337,6 +344,7 @@ export function createPostMaterial(halfResEdges: boolean, hq: boolean): THREE.Sh
       uUseEdges: { value: 1 },
       uUseScreen: { value: 1 },
       uUsePaper: { value: 1 },
+      uFlash: { value: 0 },
       uInk: { value: new THREE.Color(PAL.ink) },
       uPaper: { value: new THREE.Color(PAL.paper) },
       uPencilDark: { value: new THREE.Color(PAL.staff[3]) },

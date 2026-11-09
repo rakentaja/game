@@ -173,6 +173,16 @@ export class SettingsScreen extends Screen {
                     : 'settings.difficultyNormalHint',
                 ),
             ),
+            seg(
+              'ghost',
+              t('settings.ghost'),
+              [
+                ['daily', t('settings.ghostDaily')],
+                ['always', t('settings.ghostAlways')],
+                ['off', t('settings.ghostOff')],
+              ],
+              () => t('settings.ghostHint'),
+            ),
           ),
           h('div', { class: 'modal-foot' }, done),
         ),

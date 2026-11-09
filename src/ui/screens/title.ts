@@ -15,6 +15,15 @@ export interface TitleHandlers {
   /** Optional "continue from page N" (save data). */
   continuePage?: number | null;
   continue?(): void;
+  /** Daily Issue entry (number, rule i18n key, today's best). */
+  daily?: { number: number; ruleKey: string; bestS: number | null } | null;
+  playDaily?(): void;
+}
+
+function fmtTime(s: number): string {
+  const m = Math.floor(s / 60);
+  const r = Math.floor(s % 60);
+  return `${m}:${String(r).padStart(2, '0')}`;
 }
 
 export const VERSION = '0.1.0';
@@ -77,6 +86,27 @@ export class TitleScreen extends Screen {
           )
         : null;
 
+    const dd = hd.daily;
+    const daily =
+      dd && hd.playDaily
+        ? h(
+            'div',
+            { class: 'title-daily' },
+            this.btn(
+              h(
+                'button',
+                { class: 'cx-btn small' },
+                h('span', { class: 'num' }, t('daily.entry', { n: dd.number })),
+              ),
+              () => hd.playDaily!(),
+            ),
+            h('span', { class: 'rule' }, t(dd.ruleKey)),
+            dd.bestS != null
+              ? h('span', { class: 'best' }, t('daily.best', { time: fmtTime(dd.bestS) }))
+              : null,
+          )
+        : null;
+
     return h(
       'section',
       { class: 'ui-screen scr-title', 'aria-label': 'INKWAKE' },
@@ -105,6 +135,7 @@ export class TitleScreen extends Screen {
         { class: 'title-menu' },
         primary,
         cont,
+        daily,
         h(
           'div',
           { class: 'row' },

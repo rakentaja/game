@@ -39,7 +39,9 @@ import { MarginNotes } from '../ui/hud/margin';
 import { loadAsset, preload } from '../world/assets';
 import { type CameraRig, installCamera } from '../world/camera';
 import { installLevel, type LevelRuntime } from '../world/install';
-import { getLevel, nextPage } from '../world/levels';
+import { nextPage } from '../world/levels';
+import { parseDailyFlag } from '../world/meta/daily';
+import { installMeta, type MetaRuntime } from '../world/meta/install';
 import { NullAudio } from './NullAudio';
 
 /** Forwards to whichever level collision is current, so systems can keep one reference. */
@@ -95,6 +97,7 @@ export class Game {
   private style!: StyleSystem;
   private margin: MarginNotes | null = null;
   private level: LevelRuntime | null = null;
+  private meta!: MetaRuntime;
   private editor: Editor | null = null;
   private bot: AutoplayBot | null = null;
   private page: PageId | null = null;
@@ -221,6 +224,9 @@ export class Game {
     this.spawner.director = new Director(ctx.events, TUNING, directorWorld(this.enemies), {
       scale: () => TUNING.difficulty[ctx.settings.difficulty]?.deadline ?? 1,
     });
+    this.meta = installMeta(ctx, {
+      dropInk: (x, z, n) => this.pickups.spawn(x, this.collision.groundHeight(x, z), z, n),
+    });
     this.wireEvents();
     this.player.object.visible = false;
 
@@ -228,7 +234,9 @@ export class Game {
     await this.ui.finishLoading({ waitForTap: !(FLAGS.skipIntro || FLAGS.page) });
     void this.ctx.audio.unlock().catch(() => {});
     const start = FLAGS.page ? (FLAGS.page === 'boss' ? 'boss' : (Number(FLAGS.page) as PageId)) : null;
-    if (start || FLAGS.skipIntro) await this.newRun(start ?? 1);
+    const daily = parseDailyFlag(FLAGS.daily);
+    if (daily) await this.newRun(start ?? 1, undefined, daily);
+    else if (start || FLAGS.skipIntro) await this.newRun(start ?? 1);
     else await this.toTitle();
   }
 
@@ -241,6 +249,7 @@ export class Game {
     this.margin?.setVisible(false);
     this.teardownPage();
     this.page = null;
+    this.meta.detachPage();
     // a live, empty first page behind the title
     this.level = installLevel(this.ctx, 1, { assets: (id) => this.prop(id) });
     this.collision.target = this.level.built.collision;
@@ -251,15 +260,21 @@ export class Game {
     this.ctx.input.setEnabled(false);
     this.ctx.events.emit('state:change', { from: 'boot', to: 'title' });
     const cp = this.saveData.lastCheckpoint;
-    const choice = await this.ui.title({ continuePage: cp ? (cp.page === 'boss' ? 4 : cp.page) : null });
-    if (choice === 'continue' && cp) await this.newRun(cp.page, cp.id);
+    const dailyDate = parseDailyFlag(FLAGS.daily) ?? undefined;
+    const choice = await this.ui.title({
+      continuePage: cp ? (cp.page === 'boss' ? 4 : cp.page) : null,
+      daily: this.meta.dailyEntry(dailyDate),
+    });
+    if (choice === 'daily') await this.newRun(1, undefined, this.meta.dailyEntry(dailyDate).date);
+    else if (choice === 'continue' && cp) await this.newRun(cp.page, cp.id);
     else await this.newRun(1);
   }
 
-  private async newRun(page: PageId, checkpoint?: string): Promise<void> {
+  private async newRun(page: PageId, checkpoint?: string, dailyDate?: string): Promise<void> {
     void this.ctx.audio.unlock().catch(() => {});
     Object.assign(this.ctx.stats, freshStats());
     this.style?.reset();
+    this.meta.startRun(dailyDate ? 'daily' : 'main', dailyDate);
     this.energy.add(TUNING.energy.max);
     await this.startPage(page, checkpoint);
   }
@@ -267,7 +282,7 @@ export class Game {
   private async startPage(page: PageId, checkpoint?: string): Promise<void> {
     this.teardownPage();
     this.page = page;
-    const def = getLevel(page);
+    const def = this.meta.levelFor(page);
     this.level = installLevel(this.ctx, def, { assets: (id) => this.prop(id) });
     this.collision.target = this.level.built.collision;
     this.ctx.collision = this.collision;
@@ -296,6 +311,7 @@ export class Game {
     }
     this.ui.showHud();
     this.margin?.setVisible(true);
+    this.meta.attachPage(page);
     void this.ui.titleCard(page);
   }
 
@@ -341,6 +357,8 @@ export class Game {
     this.margin?.setVisible(false);
     const time = this.ctx.stats.timeS;
     const best = this.saveData.bestTimeS;
+    this.meta.detachPage();
+    this.meta.runComplete(time);
     this.saveData = {
       lastCheckpoint: null,
       completed: true,
@@ -444,6 +462,7 @@ export class Game {
     this.enemies.step(dt);
     this.editor?.step(dt);
     this.level?.update(dt);
+    this.meta.step(dt, this.mode === 'playing');
     ctx.reveal.update(dt);
     if (this.mode === 'playing') ctx.stats.timeS += dt;
   }

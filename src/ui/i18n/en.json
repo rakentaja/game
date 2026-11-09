@@ -88,7 +88,12 @@
     "difficultyStory": "Story",
     "difficultyNormal": "Normal",
     "difficultyStoryHint": "Fewer torn pages, cheaper ink",
-    "difficultyNormalHint": "The way the Editor intended"
+    "difficultyNormalHint": "The way the Editor intended",
+    "ghost": "Ghost inker",
+    "ghostDaily": "Daily",
+    "ghostAlways": "Always",
+    "ghostOff": "Off",
+    "ghostHint": "A pencil ghost replays your best run of the page"
   },
   "page": {
     "label": "Page {n}",
@@ -201,6 +206,56 @@
       "firstEdition": "1st Edition",
       "inkedIn": "Inked In",
       "bleedThrough": "Bleed-Through"
+    }
+  },
+  "daily": {
+    "entry": "Daily Issue #{n}",
+    "best": "Best today {time}",
+    "rule": {
+      "doubleGhosts": "Today: the ghosts come in pairs.",
+      "inkPuddles": "Today: every ghost you ink spills a puddle of ink.",
+      "thickFog": "Today: the fog sits thick on every page.",
+      "longMemory": "Today: the paper never forgets your ink."
+    }
+  },
+  "caption": {
+    "scratchHint": "Tap three times to scratch it out",
+    "nearDeath": {
+      "0": "One page left. The kid was running out of story.",
+      "1": "The paper was tearing. So was the kid's luck.",
+      "2": "A single page between the wizard and the waste bin."
+    },
+    "firstKill": {
+      "0": "The first ghost went down in ink. It wouldn't be the last.",
+      "1": "One less smudge on my clean white page.",
+      "2": "So the kid could draw blood. Ink, anyway."
+    },
+    "damage": {
+      "0": "That one tore a page right out of him.",
+      "1": "The forest bit. The forest always bites.",
+      "2": "Paper cuts. The worst kind.",
+      "3": "He was bleeding margins now."
+    },
+    "lowInk": {
+      "0": "The bottle was nearly dry. Nights like this, they always are.",
+      "1": "Low on ink. Low on time. Low on friends.",
+      "2": "Every drop counted now. I was counting."
+    },
+    "idle": {
+      "0": "The kid stood there. The page waited. I don't wait.",
+      "1": "Standing still on a blank page. Bold choice.",
+      "2": "Nothing moved in the wood. Not yet.",
+      "3": "I could rewrite you while you stand there, kid."
+    },
+    "multiKill": {
+      "0": "Three ghosts, three blots. The page was getting crowded.",
+      "1": "He inked them faster than I could draw them."
+    },
+    "threat": {
+      "crystalOut": "And then the crystal went out.",
+      "fogIn": "And then the fog rolled in.",
+      "ghostsHaste": "And then the ghosts got hungry.",
+      "inkDrought": "And then the ink ran dry."
     }
   }
 }

@@ -109,4 +109,8 @@ export const LEVEL3: LevelDef = {
   mood: { keyDir: [-0.2, 0.8, 0.55], shadow: 0.34 },
   music: 'explore',
   anchors: { arena: [0, 0, -50], door: [0, 0, -63.4] },
+  // Ink Rain: drops ink the page for a blink, lightning prints the whole frame in two tones
+  weather: 'inkRain',
+  // the ink pools on the trail smear the plates
+  misprints: [{ rect: [-6, -30, 7, -18], misreg: 3, halftone: 1.4 }],
 };

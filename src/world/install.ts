@@ -1,11 +1,15 @@
 import * as THREE from 'three';
 import type { GameContext, LevelDef, PageId, RevealAPI } from '../core/types';
+import { InkRain, type RainRender } from '../render/weather/InkRain';
 import { Checkpoints } from '../systems/checkpoints';
 import { type CrystalSample, SketchObjects } from '../systems/sketch-objects';
 import { Triggers } from '../systems/triggers';
 import { InkWells } from './inkWells';
 import { type BuildOptions, type BuiltLevel, buildLevel } from './LevelBuilder';
 import { getLevel } from './levels';
+import { EditorHand } from './meta/EditorHand';
+import { installInkMemory } from './meta/inkMemory';
+import { type MisprintTarget, MisprintZones } from './meta/misprint';
 
 export interface LevelRuntime {
   readonly def: LevelDef;
@@ -14,6 +18,9 @@ export interface LevelRuntime {
   readonly sketches: SketchObjects;
   readonly checkpoints: Checkpoints;
   readonly wells: InkWells;
+  /** Page-3 storm (null elsewhere). */
+  readonly rain: InkRain | null;
+  readonly hands: readonly EditorHand[];
   /** Teleport the player to the page start (or a saved checkpoint) and announce the page. */
   start(checkpointId?: string): void;
   /** Once per sim step, after the player moved. */
@@ -84,6 +91,23 @@ export function installLevel(
     if (e.last && e.trigger) ctx.events.emit('trigger:fired', { id: `${e.trigger}_cleared` });
   });
 
+  // The Ink Remembers / Misprint Zones / Editor's Hand / Ink Rain (world-meta workstream)
+  const memory = installInkMemory(ctx, def, (x, z) => built.collision.walkable(x, z));
+  const renderAny = ctx.render as unknown as Partial<MisprintTarget> & RainRender;
+  const misprints = def.misprints?.length
+    ? new MisprintZones(def.misprints, renderAny.misprint ? (renderAny as MisprintTarget) : null)
+    : null;
+  const hands = (def.editorHands ?? []).map((hd) => ({
+    trigger: hd.trigger,
+    hand: new EditorHand(ctx, hd.path, (x, z) => built.collision.groundHeight(x, z)),
+  }));
+  const offHands = hands.length
+    ? ctx.events.on('trigger:fired', (e) => {
+        for (const h of hands) if (h.trigger === e.id) h.hand.start();
+      })
+    : null;
+  const rain = def.weather === 'inkRain' ? new InkRain(renderAny, ctx.reveal) : null;
+
   const sample: CrystalSample = { held: false, x: 0, z: 0, radius: 0 };
   const addEnergy = (n: number) => ctx.player?.addEnergy(n);
 
@@ -94,6 +118,8 @@ export function installLevel(
     sketches,
     checkpoints,
     wells,
+    rain,
+    hands: hands.map((h) => h.hand),
     start(checkpointId) {
       const id = checkpointId ?? def.checkpoints[0]?.id;
       if (id) checkpoints.current = id;
@@ -112,18 +138,27 @@ export function installLevel(
         sample.z = p.crystalPos.z;
         sample.radius = ctx.reveal.radius;
         wells.update(dt, pos.x, pos.z, pos.y, addEnergy);
+        misprints?.update(dt, pos.x, pos.z);
       } else {
         sample.held = false;
       }
       sketches.update(dt, sample);
       built.syncWells(wells.wells);
       built.update(dt, ctx.time.simTime);
+      memory.update(dt);
+      for (const h of hands) h.hand.update(dt);
+      rain?.update(dt);
     },
     resize() {
       ctx.render.renderer.getDrawingBufferSize(resolution);
     },
     dispose() {
       offCleared();
+      offHands?.();
+      memory.dispose();
+      misprints?.dispose();
+      for (const h of hands) h.hand.dispose();
+      rain?.dispose();
       for (const h of beaconHandles) ctx.reveal.removeSource(h);
       sketches.dispose();
       checkpoints.dispose();

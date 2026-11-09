@@ -8,6 +8,8 @@ export const FLAGS = {
   page: q.get('page') as null | '1' | '2' | '3' | 'boss',
   seed: Number(q.get('seed') ?? 7),
   lang: q.get('lang') as null | 'tr' | 'en',
+  /** Daily Issue for a date (?daily=YYYY-MM-DD, or ?daily=1 for today); null = normal run. */
+  daily: q.get('daily'),
   /** Skip title/boot cinematic (e2e + dev). */
   skipIntro: q.get('skip') === '1' || q.get('autoplay') === '1',
 };

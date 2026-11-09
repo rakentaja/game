@@ -54,6 +54,10 @@ export class InkRenderer implements RenderAPI {
   readonly post = { edges: true, screen: true, paper: true, view: 0 };
   contextLost = false;
   reduceMotion = false;
+  /** Misprint zones: multipliers on misregistration offset and line-screen strength/period. */
+  readonly misprint = { misreg: 1, halftone: 1 };
+  /** Lightning two-tone flash amount 0..1 (forced 0 under reduce motion). */
+  flash = 0;
 
   private readonly canvas: HTMLCanvasElement;
   private readonly mobile: boolean;
@@ -320,12 +324,14 @@ export class InkRenderer implements RenderAPI {
     s.uSketchAmt!.value = R.sketch;
     s.uCrystalPos!.value.copy(this.reveal.center);
     const U = this.postMat.uniforms;
-    U.uPeriod!.value = R.lineScreenPeriod;
     U.uAngle!.value = R.lineScreenAngle;
-    U.uScreenAmt!.value = R.lineScreenStrength;
+    const ht = this.misprint.halftone;
+    U.uScreenAmt!.value = Math.min(1, R.lineScreenStrength * ht);
+    U.uPeriod!.value = R.lineScreenPeriod * (1 + (ht - 1) * 0.6);
     U.uEdgeW!.value = R.edgeWidthPx;
     U.uGrain!.value = R.grain;
-    U.uMisreg!.value = this.misreg ? R.misregPx : 0;
+    U.uMisreg!.value = this.misreg ? R.misregPx * this.misprint.misreg : 0;
+    U.uFlash!.value = this.reduceMotion ? 0 : this.flash;
     U.uVignette!.value = R.vignette;
     U.uUseEdges!.value = this.post.edges && this.outlineMode !== 'A' ? 1 : 0;
     U.uUseScreen!.value = this.post.screen ? 1 : 0;

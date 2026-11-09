@@ -2143,3 +2143,175 @@
 .logo:not(.inking) .logo-ink {
   visibility: hidden;
 }
+
+/* ─────────── narration captions (The Editor Writes Back) ─────────── */
+.ui-captions {
+  position: absolute;
+  left: 50%;
+  /* below pages + ink bottle (top-left), pause (top-right) and the boss bar (top-centre) */
+  top: calc(var(--pad-t) + clamp(96px, 16vmin, 132px));
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(78vw, 440px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+  z-index: 30;
+}
+.ui-caption {
+  position: relative;
+  pointer-events: auto;
+  touch-action: manipulation;
+  margin: 0;
+  padding: 0.5em 0.85em 0.6em;
+  background: var(--gold);
+  color: var(--ink);
+  border: 3px solid var(--ink);
+  border-radius: 2px;
+  box-shadow: 4px 4px 0 var(--ink);
+  font-family: var(--f-display);
+  font-size: clamp(15px, 2.2vmin + 9px, 22px);
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+  text-align: left;
+  transform: rotate(-1.2deg);
+  animation: caption-in 320ms cubic-bezier(0.2, 1.5, 0.4, 1) both;
+  cursor: default;
+  overflow: hidden;
+}
+.ui-caption.threat {
+  cursor: pointer;
+  background: var(--gold);
+  box-shadow: 4px 4px 0 var(--red-1);
+}
+.ui-caption .txt {
+  display: block;
+}
+.ui-caption .hint {
+  display: block;
+  margin-top: 0.25em;
+  font-family: var(--f-letter);
+  font-size: 0.62em;
+  letter-spacing: 0;
+  text-transform: none;
+  opacity: 0.8;
+}
+.ui-caption .fuse {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: var(--red-1);
+  transform-origin: left center;
+  animation: caption-fuse var(--d, 4s) linear both;
+}
+.ui-caption .scratch {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+.ui-caption .scratch path {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  vector-effect: non-scaling-stroke;
+  animation: caption-scratch 160ms ease-out forwards;
+}
+.ui-caption.out {
+  animation: caption-out 240ms ease-in forwards;
+}
+.ui-caption.scratched {
+  animation: caption-drop 800ms ease-in forwards;
+}
+.ui-caption.scratched .fuse {
+  animation-play-state: paused;
+}
+.ui-caption.fired {
+  background: var(--red-2);
+  color: var(--paper);
+  animation: caption-fired 850ms ease-in forwards;
+}
+.ui-caption.fired .fuse {
+  display: none;
+}
+@keyframes caption-in {
+  from {
+    opacity: 0;
+    transform: translateY(-14px) rotate(-4deg) scale(0.9);
+  }
+}
+@keyframes caption-out {
+  to {
+    opacity: 0;
+    transform: translateY(-10px) rotate(-1.2deg);
+  }
+}
+@keyframes caption-fuse {
+  to {
+    transform: scaleX(0);
+  }
+}
+@keyframes caption-scratch {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes caption-drop {
+  0%,
+  35% {
+    opacity: 1;
+    transform: rotate(-1.2deg);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(40px) rotate(9deg);
+  }
+}
+@keyframes caption-fired {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.06) rotate(-2deg);
+  }
+}
+.reduce-motion .ui-caption .fuse {
+  animation: none !important;
+}
+
+/* title: Daily Issue entry */
+.title-daily {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.title-daily .cx-btn .num {
+  font-family: var(--f-display);
+}
+.title-daily .rule {
+  font-family: var(--f-letter);
+  font-size: 0.85em;
+  max-width: min(80vw, 360px);
+  text-align: center;
+  background: var(--gold);
+  color: var(--ink);
+  padding: 0.1em 0.6em;
+  border: 2px solid var(--ink);
+  transform: rotate(-0.8deg);
+}
+.title-daily .best {
+  font-size: 0.8em;
+  opacity: 0.85;
+}
