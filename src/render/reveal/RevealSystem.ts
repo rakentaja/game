@@ -13,6 +13,11 @@ import {
   stampValue,
 } from './revealMath';
 
+/** Texels per side of a reclaim region. */
+const REGION = 16;
+/** Side of the coarse grid sampled by `inkedFraction`. */
+const PROGRESS_N = 64;
+
 interface Source {
   handle: number;
   x: number;
@@ -55,11 +60,30 @@ export class RevealSystem implements RevealAPI {
   private growth = 0;
   private readonly np: RevealNoiseParams = { scale: 3, amp: 0.6, seep: 0, time: 0, growth: 0, fingers: 0 };
   private readonly srcVecs: THREE.Vector4[];
+  /** 1 = permanent texel (kills, dash trails, prints): skipped by the regular fade. */
+  private readonly perm: Uint8Array;
+  /** Per-region (REGION² texels) sim time of the last ink stamp, for blank-paper reclaim. */
+  private readonly regionLast: Float32Array;
+  private readonly regions: number;
+  private reclaimAcc = 0;
+  /** Reclaim strength multiplier (difficulty / daily rules). 0 disables reclaim. */
+  reclaimMul = 1;
+  /** Coarse PROGRESS_N² mask of cells that count toward `inkedFraction` (walkable area). */
+  private readonly progressMask: Uint8Array;
+  private progressTotal: number;
+  /** Temporary radius cap ("AND THEN THE CRYSTAL WENT OUT"). */
+  private radiusCap = Number.POSITIVE_INFINITY;
+  private radiusCapT = 0;
 
   constructor(size: number = TUNING.quality.revealHistorySize) {
     this.size = size;
     this.hist = new Float32Array(size * size);
     this.bytes = new Uint8Array(size * size * 2);
+    this.perm = new Uint8Array(size * size);
+    this.regions = Math.max(1, Math.ceil(size / REGION));
+    this.regionLast = new Float32Array(this.regions * this.regions);
+    this.progressMask = new Uint8Array(PROGRESS_N * PROGRESS_N).fill(1);
+    this.progressTotal = PROGRESS_N * PROGRESS_N;
     this.histTex = new THREE.DataTexture(this.bytes, size, size, THREE.RGFormat, THREE.UnsignedByteType);
     this.histTex.magFilter = this.histTex.minFilter = THREE.LinearFilter;
     this.histTex.wrapS = this.histTex.wrapT = THREE.ClampToEdgeWrapping;
@@ -151,6 +175,111 @@ export class RevealSystem implements RevealAPI {
   }
 
   eraseStrip(ax: number, az: number, bx: number, bz: number, halfWidth: number): void {
+    this.strip(ax, az, bx, bz, halfWidth, true);
+  }
+
+  /**
+   * Blank a strip back to paper (history and permanence zeroed) WITHOUT the eraser's
+   * never-re-ink mark: the player can ink it again (Editor's Hand).
+   */
+  clearStrip(ax: number, az: number, bx: number, bz: number, halfWidth: number): void {
+    this.strip(ax, az, bx, bz, halfWidth, false);
+  }
+
+  /**
+   * Permanent ink (The Ink Remembers): stamps a circle the regular fade never removes — only
+   * blank-paper reclaim (long-unvisited regions) or an erase can. No-op without history (Low).
+   */
+  stampPermanent(x: number, z: number, r: number): void {
+    if (!this.historyEnabled || r <= 0) return;
+    this.stamp(x, z, r, true);
+    this.histDirty = true;
+  }
+
+  /** Permanent capsule along a→b (dash trails). */
+  stampSegmentPermanent(ax: number, az: number, bx: number, bz: number, r: number): void {
+    if (!this.historyEnabled || r <= 0) return;
+    const len = Math.hypot(bx - ax, bz - az);
+    const n = Math.max(1, Math.ceil(len / Math.max(0.2, r * 0.5)));
+    for (let i = 0; i <= n; i++) {
+      const t = i / n;
+      this.stamp(ax + (bx - ax) * t, az + (bz - az) * t, r, true);
+    }
+    this.histDirty = true;
+  }
+
+  /** True if the texel under (x,z) is permanent ink (tests / debug). */
+  isPermanent(x: number, z: number): boolean {
+    const k = this.texelIndex(x, z);
+    return k >= 0 && this.perm[k] === 1;
+  }
+
+  /** Raw stamped history value 0..1 at the texel under (x,z) (tests / debug). */
+  historyAt(x: number, z: number): number {
+    const k = this.texelIndex(x, z);
+    return k >= 0 ? this.hist[k]! : 0;
+  }
+
+  private texelIndex(x: number, z: number): number {
+    const N = this.size;
+    const i = Math.floor(((x - this.histMinX) / this.histWorld) * N);
+    const j = Math.floor(((z - this.histMinZ) / this.histWorld) * N);
+    if (i < 0 || j < 0 || i >= N || j >= N) return -1;
+    return j * N + i;
+  }
+
+  /** Collapse the crystal to at most `r` metres for `seconds` (caption effect). */
+  capRadius(r: number, seconds: number): void {
+    this.radiusCap = Math.max(0, r);
+    this.radiusCapT = Math.max(0, seconds);
+  }
+
+  get radiusCapped(): boolean {
+    return this.radiusCapT > 0;
+  }
+
+  /** Free (dead) source slots; ambient effects (rain) only spend slots when plenty are free. */
+  freeSources(): number {
+    let n = 0;
+    for (const s of this.sources) if (!s.alive) n++;
+    return n;
+  }
+
+  /**
+   * Restrict `inkedFraction` to cells where `inside(x, z)` (walkable area). Sampled on a coarse
+   * grid once per page; call after `setHistoryBounds`. `null` counts every cell.
+   */
+  setProgressMask(inside: ((x: number, z: number) => boolean) | null): void {
+    const P = PROGRESS_N;
+    const cell = this.histWorld / P;
+    let total = 0;
+    for (let j = 0; j < P; j++)
+      for (let i = 0; i < P; i++) {
+        const inn = !inside || inside(this.histMinX + (i + 0.5) * cell, this.histMinZ + (j + 0.5) * cell);
+        this.progressMask[j * P + i] = inn ? 1 : 0;
+        if (inn) total++;
+      }
+    this.progressTotal = total;
+  }
+
+  /** Fraction (0..1) of the masked page currently inked (history above the revealed threshold). */
+  inkedFraction(): number {
+    if (this.progressTotal <= 0) return 0;
+    const P = PROGRESS_N;
+    const N = this.size;
+    const step = N / P;
+    let n = 0;
+    for (let j = 0; j < P; j++) {
+      const row = Math.min(N - 1, Math.floor((j + 0.5) * step)) * N;
+      for (let i = 0; i < P; i++) {
+        if (!this.progressMask[j * P + i]) continue;
+        if (this.hist[row + Math.min(N - 1, Math.floor((i + 0.5) * step))]! > 0.5) n++;
+      }
+    }
+    return n / this.progressTotal;
+  }
+
+  private strip(ax: number, az: number, bx: number, bz: number, halfWidth: number, mark: boolean): void {
     const N = this.size;
     const ts = this.histWorld / N;
     const pad = halfWidth + ts * 2;
@@ -173,8 +302,11 @@ export class RevealSystem implements RevealAPI {
         const e = smooth01((halfWidth - d) / (ts * 1.5) + 0.5);
         if (e <= 0) continue;
         const k = j * N + i;
-        const cur = this.bytes[k * 2 + 1]! / 255;
-        if (e > cur) this.bytes[k * 2 + 1] = Math.round(e * 255);
+        if (mark) {
+          const cur = this.bytes[k * 2 + 1]! / 255;
+          if (e > cur) this.bytes[k * 2 + 1] = Math.round(e * 255);
+        }
+        if (e > 0.5) this.perm[k] = 0;
         this.hist[k] = this.hist[k]! * (1 - e);
         this.bytes[k * 2] = Math.round(this.hist[k]! * 255);
       }
@@ -185,6 +317,8 @@ export class RevealSystem implements RevealAPI {
   private clearHistory(): void {
     this.hist.fill(0);
     this.bytes.fill(0);
+    this.perm.fill(0);
+    this.regionLast.fill(this.time);
     this.histTex.needsUpdate = true;
   }
 
@@ -193,10 +327,16 @@ export class RevealSystem implements RevealAPI {
     const R = TUNING.reveal;
     this.time += dt;
     const prev = this.radius;
-    const tau = this.targetRadius > this.radius ? C.growTime : C.shrinkTime;
+    if (this.radiusCapT > 0) {
+      this.radiusCapT -= dt;
+      if (this.radiusCapT <= 0) this.radiusCap = Number.POSITIVE_INFINITY;
+    }
+    const target = Math.min(this.targetRadius, this.radiusCap);
+    // a collapse snuffs fast (the ink "goes out"); everything else eases as tuned
+    const tau = target > this.radius ? C.growTime : this.radiusCapT > 0 ? 0.25 : C.shrinkTime;
     const k = tau > 0 ? 1 - Math.exp((-dt * 4.6) / tau) : 1;
-    this.radius += (this.targetRadius - this.radius) * k;
-    if (Math.abs(this.targetRadius - this.radius) < 1e-4) this.radius = this.targetRadius;
+    this.radius += (target - this.radius) * k;
+    if (Math.abs(target - this.radius) < 1e-4) this.radius = target;
     const span = Math.max(0.5, (C.radiusHeld - C.radiusIdle) / Math.max(0.05, C.growTime));
     const g = dt > 0 ? Math.max(0, (this.radius - prev) / dt / span) : 0;
     this.growth += (Math.min(1, g * 1.6) - this.growth) * (1 - Math.exp(-dt * 8));
@@ -218,6 +358,11 @@ export class RevealSystem implements RevealAPI {
         this.fadeAcc = 0;
         this.stampAcc %= stepS;
         this.histDirty = true;
+      }
+      this.reclaimAcc += dt;
+      if (this.reclaimAcc >= 1) {
+        if (this.reclaim(this.reclaimAcc)) this.histDirty = true;
+        this.reclaimAcc = 0;
       }
     }
     if (this.histDirty) {
@@ -244,14 +389,56 @@ export class RevealSystem implements RevealAPI {
     const b = this.bytes;
     for (let k = 0; k < h.length; k++) {
       const v = h[k]!;
-      if (v <= 0) continue;
+      if (v <= 0 || this.perm[k]) continue;
       const nv = v - amount;
       h[k] = Math.max(nv, 0);
       b[k * 2] = Math.round(h[k]! * 255);
     }
   }
 
-  private stamp(cx: number, cz: number, r: number): void {
+  /**
+   * Blank-paper reclaim: regions nobody re-inked for `reclaimAfterS` slowly whiten — permanent
+   * ink included (a texel that reaches paper loses its permanence). Returns true if anything changed.
+   */
+  private reclaim(elapsed: number): boolean {
+    const M = TUNING.worldMeta.inkMemory;
+    const amount = elapsed * M.reclaimPerSec * this.reclaimMul;
+    if (amount <= 0) return false;
+    const N = this.size;
+    const R = this.regions;
+    let changed = false;
+    for (let rj = 0; rj < R; rj++)
+      for (let ri = 0; ri < R; ri++) {
+        if (this.time - this.regionLast[rj * R + ri]! < M.reclaimAfterS) continue;
+        const j1 = Math.min(N, (rj + 1) * REGION);
+        const i1 = Math.min(N, (ri + 1) * REGION);
+        for (let j = rj * REGION; j < j1; j++)
+          for (let i = ri * REGION; i < i1; i++) {
+            const k = j * N + i;
+            const v = this.hist[k]!;
+            if (v <= 0) continue;
+            const nv = v - amount;
+            if (nv <= 0) {
+              this.hist[k] = 0;
+              this.perm[k] = 0;
+            } else this.hist[k] = nv;
+            this.bytes[k * 2] = Math.round(this.hist[k]! * 255);
+            changed = true;
+          }
+      }
+    return changed;
+  }
+
+  private touchRegions(i0: number, i1: number, j0: number, j1: number): void {
+    const R = this.regions;
+    const r0 = Math.max(0, Math.floor(i0 / REGION));
+    const r1 = Math.min(R - 1, Math.floor(i1 / REGION));
+    const q0 = Math.max(0, Math.floor(j0 / REGION));
+    const q1 = Math.min(R - 1, Math.floor(j1 / REGION));
+    for (let q = q0; q <= q1; q++) for (let r = r0; r <= r1; r++) this.regionLast[q * R + r] = this.time;
+  }
+
+  private stamp(cx: number, cz: number, r: number, permanent = false): void {
     const N = this.size;
     const ts = this.histWorld / N;
     const edge = TUNING.crystal.edgeWidth;
@@ -260,16 +447,20 @@ export class RevealSystem implements RevealAPI {
     const i1 = Math.min(N - 2, Math.ceil((cx + reach - this.histMinX) / ts));
     const j0 = Math.max(1, Math.floor((cz - reach - this.histMinZ) / ts));
     const j1 = Math.min(N - 2, Math.ceil((cz + reach - this.histMinZ) / ts));
+    if (i0 > i1 || j0 > j1) return;
+    this.touchRegions(i0, i1, j0, j1);
+    const permMin = TUNING.worldMeta.inkMemory.permanentMin;
     for (let j = j0; j <= j1; j++) {
       const dz = this.histMinZ + (j + 0.5) * ts - cz;
       for (let i = i0; i <= i1; i++) {
         const dx = this.histMinX + (i + 0.5) * ts - cx;
         const v = stampValue(Math.sqrt(dx * dx + dz * dz), r, edge);
         const k = j * N + i;
-        if (v <= this.hist[k]!) continue;
+        if (v <= 0) continue;
         // Erased texels never re-ink.
         const e = this.bytes[k * 2 + 1]! / 255;
         const nv = v * (1 - e);
+        if (permanent && nv >= permMin) this.perm[k] = 1;
         if (nv <= this.hist[k]!) continue;
         this.hist[k] = nv;
         this.bytes[k * 2] = Math.round(nv * 255);
@@ -340,6 +531,8 @@ export class RevealSystem implements RevealAPI {
     this.radius = this.targetRadius = TUNING.crystal.radiusIdle;
     this.blankPage = 0;
     this.growth = 0;
+    this.radiusCap = Number.POSITIVE_INFINITY;
+    this.radiusCapT = 0;
     for (const s of this.sources) s.alive = false;
     this.syncSources();
     this.clearHistory();

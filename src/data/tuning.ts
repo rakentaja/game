@@ -356,6 +356,70 @@ export const TUNING = {
     wetFrontPx: 2.5,
     sketch: 1,
   },
+  /** World / render / UI-meta workstream (Idea Ledger wave 1). */
+  worldMeta: {
+    /** The Ink Remembers: permanent stamps + blank-paper reclaim. */
+    inkMemory: {
+      killRadius: 2.1,
+      dashRadius: 0.95,
+      printRadius: 4.4,
+      /** Stamped texels at or above this value become permanent (soft rim still fades). */
+      permanentMin: 0.36,
+      /** A history region untouched this long starts whitening (s). */
+      reclaimAfterS: 75,
+      /** History lost per second while reclaiming (0..1 scale; 1 = full ink). */
+      reclaimPerSec: 0.012,
+      /** Reclaim multiplier on Story difficulty (gentle). */
+      storyReclaimMul: 0.3,
+      progressHz: 4,
+    },
+    inkRain: {
+      dropsPerSec: 20,
+      dropLife: 0.4,
+      dropRadius: 0.55,
+      dropSpread: 9,
+      /** Rain only spends reveal source slots while at least this many are free. */
+      minFreeSources: 5,
+      streaks: 180,
+      streakBox: 22,
+      streakHeight: 14,
+      streakSpeed: 17,
+      lightningMin: 7,
+      lightningMax: 15,
+      /** Post flash length in frames (2–3); always one pulse per strike (< 3 Hz). */
+      flashFrames: 3,
+      flashRevealRadius: 15,
+      flashRevealLife: 0.55,
+    },
+    editorHand: {
+      duration: 4,
+      descend: 0.9,
+      withdraw: 0.9,
+      scale: 5.5,
+      halfWidth: 2.6,
+    },
+    misprint: { blend: 2.2 },
+    captions: {
+      /** Minimum gap between any two captions (s). */
+      globalCooldown: 14,
+      /** Same-category repeat gap (s). */
+      categoryCooldown: 50,
+      showS: 4.2,
+      idleS: 9,
+      /** Threats: rare, never before this much page time, max one per page. */
+      threatChancePerMin: 0.35,
+      threatMinPageS: 40,
+      threatDelay: 4.5,
+      tapsToCancel: 3,
+      crystalOutRadius: 0.6,
+      crystalOutS: 3.5,
+      fogInS: 6,
+      fogInMul: 0.45,
+      inkDrought: 25,
+    },
+    daily: { spawnJitter: 2.2, minStartDist: 9, walkSlack: 2.5 },
+    ghost: { hz: 12, maxSeconds: 300, quant: 0.05 },
+  },
   fx: {
     shakeMax: 0.28,
     shakeFreq: 22,

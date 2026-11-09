@@ -6,7 +6,7 @@
 import path from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
 
-const PORT = 5197;
+const PORT = Number(process.env.VISUAL_PORT ?? 5197);
 const BASE = `http://localhost:${PORT}`;
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const THREE_DIR = path.join(ROOT, 'node_modules/three');
