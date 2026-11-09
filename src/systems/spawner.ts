@@ -1,10 +1,23 @@
 import type { EventBus, GameEvents } from '../core/events';
-import type { EnemyKind, LevelDef, SpawnDef } from '../core/types';
+import type { EliteAffix, EnemyKind, LevelDef, SpawnDef } from '../core/types';
 
 /** What the spawner needs from the enemy system (EnemySystem satisfies it). */
 export interface SpawnSink {
   readonly activeCount: number;
-  spawn(kind: EnemyKind, x: number, z: number): { id: number } | null;
+  spawn(
+    kind: EnemyKind,
+    x: number,
+    z: number,
+    opts?: { elite?: EliteAffix | 'roll' | null },
+  ): { id: number } | null;
+}
+
+/** Optional layer on top of the authored waves (the encounter director). */
+export interface SpawnLayer {
+  load(level: Pick<LevelDef, 'spawns'> & { seed?: number }): void;
+  reset(): void;
+  step(dt: number): void;
+  dispose(): void;
 }
 
 export interface SpawnerOptions {
@@ -43,6 +56,8 @@ export class Spawner {
   private stagger: number;
   private waveDelay: number;
   private maxActive: (() => number) | null;
+  /** Encounter director layered on the authored waves (src/systems/ai/director.ts). */
+  director: SpawnLayer | null = null;
 
   constructor(
     private events: EventBus<GameEvents>,
@@ -55,9 +70,13 @@ export class Spawner {
     this.offDied = events.on('enemy:died', (e) => this.onDied(e.id));
   }
 
-  load(level: Pick<LevelDef, 'spawns'> | null): void {
+  load(level: (Pick<LevelDef, 'spawns'> & { seed?: number }) | null): void {
     this.groups.clear();
-    if (!level) return;
+    if (!level) {
+      this.director?.reset();
+      return;
+    }
+    this.director?.load(level);
     for (const def of level.spawns) {
       const key = def.trigger ?? '';
       let g = this.groups.get(key);
@@ -117,6 +136,7 @@ export class Spawner {
   }
 
   step(dt: number): void {
+    this.director?.step(dt);
     for (const g of this.groups.values()) {
       if (!g.started || g.done) continue;
       const wave = g.waves[g.waveIdx];
@@ -129,7 +149,7 @@ export class Spawner {
         if (g.cooldown > 0) continue;
         if (this.maxActive && this.sink.activeCount >= this.maxActive()) continue;
         const def = wave.defs[g.cursor]!;
-        const e = this.sink.spawn(def.kind, def.at[0], def.at[1]);
+        const e = this.sink.spawn(def.kind, def.at[0], def.at[1], { elite: def.elite ?? 'roll' });
         if (!e) continue; // full: retry next step
         g.alive.add(e.id);
         g.cursor++;
@@ -149,11 +169,13 @@ export class Spawner {
 
   reset(): void {
     this.groups.clear();
+    this.director?.reset();
   }
 
   dispose(): void {
     this.offDied();
     this.groups.clear();
+    this.director?.dispose();
   }
 
   private onDied(id: number): void {

@@ -170,7 +170,13 @@
     "scrub": "SCRUB!",
     "crumple": "CRUMPLE!",
     "fin": "THE END?",
-    "kachunk": "KA-CHUNK!"
+    "kachunk": "KA-CHUNK!",
+    "shff": "SHFF!",
+    "splotch": "SPLOTCH!",
+    "klik": "KLIK!",
+    "redacted": "[REDACTED]",
+    "misprint": "MISPRINT!",
+    "shink": "SHINK!"
   },
   "style": {
     "label": "Editor's mark: {grade}",
@@ -189,5 +195,12 @@
     "dash": "dash",
     "crystal": "the light",
     "print": "printing"
+  },
+  "enemy": {
+    "elite": {
+      "firstEdition": "1st Edition",
+      "inkedIn": "Inked In",
+      "bleedThrough": "Bleed-Through"
+    }
   }
 }

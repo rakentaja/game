@@ -46,6 +46,8 @@ export const LEVEL2: LevelDef = {
     { kind: 'scribbler', at: [-11, -31], trigger: 'p2_glade' },
     { kind: 'scribbler', at: [-1, -32.5], trigger: 'p2_glade' },
     { kind: 'smudge', at: [-10, -22], trigger: 'p2_glade' },
+    // the dash lesson pays off: Margin Man only takes bolts after a dash trail crosses him
+    { kind: 'marginMan', at: [-12, -28], trigger: 'p2_glade', wave: 1 },
     { kind: 'scribbler', at: [0.5, -84], trigger: 'p2_corridor' },
     // the ambush comes from the near side: nothing may shoot over a closed gate it can't be hit through
     { kind: 'smudge', at: [-4.5, -87], trigger: 'p2_gate_ambush' },
@@ -54,6 +56,7 @@ export const LEVEL2: LevelDef = {
     { kind: 'scribbler', at: [7, -117], trigger: 'p2_mist' },
     { kind: 'smudge', at: [-4, -115], trigger: 'p2_mist' },
     { kind: 'smudge', at: [6, -109], trigger: 'p2_mist' },
+    { kind: 'cranes', at: [3, -119], trigger: 'p2_mist', wave: 1 },
   ],
   sketches: [
     {

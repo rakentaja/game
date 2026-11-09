@@ -170,7 +170,13 @@
     "scrub": "SİL SİL!",
     "crumple": "HIŞIR!",
     "fin": "SON MU?",
-    "kachunk": "KAÇUNK!"
+    "kachunk": "KAÇUNK!",
+    "shff": "HIŞŞ!",
+    "splotch": "ŞLOP!",
+    "klik": "ÇIT!",
+    "redacted": "[SANSÜR]",
+    "misprint": "BASKI HATASI!",
+    "shink": "ŞINK!"
   },
   "style": {
     "label": "Editör notu: {grade}",
@@ -189,5 +195,12 @@
     "dash": "atılma",
     "crystal": "ışık",
     "print": "baskı"
+  },
+  "enemy": {
+    "elite": {
+      "firstEdition": "1. Baskı",
+      "inkedIn": "Mürekkepli",
+      "bleedThrough": "Sızıntı"
+    }
   }
 }

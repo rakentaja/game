@@ -3,6 +3,7 @@ import { NOISE_GLSL } from './glsl';
 /**
  * Instanced ribbons on a unit quad (x 0..1 along, y -0.5..0.5 across):
  *   aP0 = (start.xyz, type)   type 0 telegraph, 1 pencil projectile, 2 ground shadow, 3 drain tendril
+ *                             4 comic panel border (Panel Warden; aL.w = 1 dashed preview)
  *   aP1 = (end.xyz, width)
  *   aL  = (progress, seed, vis, extra)
  * Telegraphs and projectiles ignore the reveal mask (pencil marks read on blank paper too, for
@@ -61,6 +62,14 @@ void main(){
   float y = vQ.y * 2.0; // -1..1 across
   float seed = vL.y;
   float rag = (en(vec2(x * vLen * 6.0, seed * 50.0)) - 0.5) * 0.35;
+  if (vType > 3.5){
+    // Panel border: a bold ink rule with a paper inner edge, readable on blank paper (unmasked).
+    float ay = abs(y) + rag * 0.25;
+    if (ay > 1.0) discard;
+    if (vL.w > 0.5 && fract(x * vLen / 0.6 - uTime) > 0.55) discard;
+    gl_FragColor = vec4(ay < 0.3 ? uRamp3 : uRamp0, 1.0);
+    return;
+  }
   if (vType < 0.5){
     // Telegraph: a dashed pencil line scratching itself toward the target. As it charges the
     // dashes close up and the line thickens — readable by shape, not colour.

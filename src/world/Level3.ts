@@ -36,13 +36,17 @@ export const LEVEL3: LevelDef = {
   ],
   spawns: [
     { kind: 'blot', at: [5, -26], trigger: 'p3_trail' },
+    { kind: 'misprint', at: [-2, -29], trigger: 'p3_trail' },
     { kind: 'blot', at: [-8, -55], trigger: 'p3_arena', wave: 1 },
     { kind: 'smudge', at: [8, -47], trigger: 'p3_arena', wave: 1 },
     { kind: 'smudge', at: [-7, -44], trigger: 'p3_arena', wave: 1 },
+    { kind: 'redactor', at: [3, -55], trigger: 'p3_arena', wave: 1 },
     // wave 2 closes in from the flanks of the north rim (within aggro of the door, never on its line)
     { kind: 'blot', at: [7, -53], trigger: 'p3_arena', wave: 2 },
     { kind: 'scribbler', at: [-8.5, -52], trigger: 'p3_arena', wave: 2 },
     { kind: 'smudge', at: [-5.5, -56.5], trigger: 'p3_arena', wave: 2 },
+    // a First Edition warden: break its panel, earn a full well right before the door print
+    { kind: 'panelWarden', at: [6.5, -45], trigger: 'p3_arena', wave: 2, elite: 'firstEdition' },
   ],
   sketches: [
     {

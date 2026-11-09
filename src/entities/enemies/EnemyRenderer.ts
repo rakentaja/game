@@ -1,15 +1,42 @@
 import * as THREE from 'three';
+import type { EliteAffix, EnemyKind } from '../../core/types';
 import { PAL } from '../../data/palette';
 import { REVEAL_GLSL } from '../../render/reveal/revealMath';
 import { AiState } from '../../systems/ai/fsm';
 import { BODY_FRAG, BODY_VERT } from './bodyShader';
+import { CraneMode, type CraneTarget } from './Cranes';
 import type { Enemy } from './Enemy';
-import { KIND_INDEX } from './Enemy';
-import { ENEMY_POOL, type EnemyFxSink, type EnemySystem, PROJECTILE_POOL } from './EnemySystem';
+import { ELITE_INDEX, KIND_INDEX } from './Enemy';
+import { CRANE_POOL, ENEMY_POOL, type EnemyFxSink, type EnemySystem, PROJECTILE_POOL } from './EnemySystem';
 import { FX_FRAG, FX_VERT, PARTICLE_FRAG, PARTICLE_VERT } from './fxShader';
 import { MASK_GLSL, MASK_TOKEN, renderMaskGlsl } from './glsl';
+import { MARGIN_TELL } from './MarginMan';
+import { WARDEN_BOX, WARDEN_WINDUP } from './PanelWarden';
 
-const FX_CAP = ENEMY_POOL * 3 + PROJECTILE_POOL;
+/** Body instances: every enemy (misprints draw up to 3 offset plates) + every crane. */
+const BODY_CAP = ENEMY_POOL * 3 + CRANE_POOL;
+const FX_CAP = ENEMY_POOL * 4 + PROJECTILE_POOL + CRANE_POOL;
+/** Elite caption tags on screen at once. */
+const TAG_CAP = 4;
+
+/** Paper-ish kinds tear into scraps; ink kinds splat. */
+const INK_KIND: Partial<Record<EnemyKind, true>> = { blot: true, redactor: true };
+/** Rough body height per kind (FX anchor points, caption tags). */
+const KIND_H: Record<EnemyKind, number> = {
+  smudge: 0.8,
+  scribbler: 1.3,
+  blot: 0.35,
+  marginMan: 1.4,
+  redactor: 0.9,
+  panelWarden: 1.2,
+  misprint: 0.8,
+  cranes: 0.2,
+};
+const TAG_KEYS: Record<EliteAffix, [string, string]> = {
+  firstEdition: ['enemy.elite.firstEdition', '1st Edition'],
+  inkedIn: ['enemy.elite.inkedIn', 'Inked In'],
+  bleedThrough: ['enemy.elite.bleedThrough', 'Bleed-Through'],
+};
 const PROJ_LEN = 1.25;
 
 /** Shard blocks the death tear splits the body into (must match bodyShader). */
@@ -73,6 +100,8 @@ export interface EnemyRendererOptions {
    * write ink-class alpha for the post pass, matching InkMaterial. Omit in harnesses.
    */
   inkContext?: { shared: Record<string, THREE.IUniform>; reveal: Record<string, THREE.IUniform> };
+  /** i18n lookup for elite caption tags (ctx.t). English fallbacks otherwise. */
+  label?: (key: string) => string;
 }
 
 /**
@@ -92,6 +121,10 @@ export class EnemyRenderer implements EnemyFxSink {
   private aB: THREE.InstancedBufferAttribute;
   private aC: THREE.InstancedBufferAttribute;
   private aD: THREE.InstancedBufferAttribute;
+  private aE: THREE.InstancedBufferAttribute;
+  private readonly tags: THREE.Sprite[] = [];
+  private readonly tagMats = new Map<EliteAffix, THREE.SpriteMaterial>();
+  private readonly label: ((key: string) => string) | null;
   private fP0: THREE.InstancedBufferAttribute;
   private fP1: THREE.InstancedBufferAttribute;
   private fL: THREE.InstancedBufferAttribute;
@@ -155,7 +188,15 @@ export class EnemyRenderer implements EnemyFxSink {
       uOutlineW: { value: 0.035 },
       uFogNear: { value: 1e4 },
       uFogFar: { value: 2e4 },
+      uEliteW: { value: system.tuning.enemies.elites.outlineMul },
+      uTintC: { value: col(PAL.teal[2]) },
+      uTintM: { value: col(PAL.red[2]) },
+      uTintY: { value: col(PAL.glowCore) },
+      uGold: { value: col(PAL.glowCore) },
+      uEliteTeal: { value: col(PAL.teal[3]) },
+      uEliteRed: { value: col(PAL.red[2]) },
     };
+    this.label = opts.label ?? null;
     const ink = opts.inkContext;
     this.ownMask = !ink;
     if (ink) {
@@ -170,15 +211,17 @@ export class EnemyRenderer implements EnemyFxSink {
 
     // ── bodies + outlines ──
     const grid = createLatheGrid();
-    this.aA = new THREE.InstancedBufferAttribute(new Float32Array(ENEMY_POOL * 4), 4);
-    this.aB = new THREE.InstancedBufferAttribute(new Float32Array(ENEMY_POOL * 4), 4);
-    this.aC = new THREE.InstancedBufferAttribute(new Float32Array(ENEMY_POOL * 4), 4);
-    this.aD = new THREE.InstancedBufferAttribute(new Float32Array(ENEMY_POOL * 4), 4);
-    for (const a of [this.aA, this.aB, this.aC, this.aD]) a.setUsage(THREE.DynamicDrawUsage);
+    this.aA = new THREE.InstancedBufferAttribute(new Float32Array(BODY_CAP * 4), 4);
+    this.aB = new THREE.InstancedBufferAttribute(new Float32Array(BODY_CAP * 4), 4);
+    this.aC = new THREE.InstancedBufferAttribute(new Float32Array(BODY_CAP * 4), 4);
+    this.aD = new THREE.InstancedBufferAttribute(new Float32Array(BODY_CAP * 4), 4);
+    this.aE = new THREE.InstancedBufferAttribute(new Float32Array(BODY_CAP * 4), 4);
+    for (const a of [this.aA, this.aB, this.aC, this.aD, this.aE]) a.setUsage(THREE.DynamicDrawUsage);
     grid.setAttribute('aA', this.aA);
     grid.setAttribute('aB', this.aB);
     grid.setAttribute('aC', this.aC);
     grid.setAttribute('aD', this.aD);
+    grid.setAttribute('aE', this.aE);
 
     const bodyMat =
       opts.bodyMaterial ??
@@ -194,8 +237,8 @@ export class EnemyRenderer implements EnemyFxSink {
       fragmentShader: withMask(BODY_FRAG),
       side: THREE.BackSide,
     });
-    this.body = new THREE.InstancedMesh(grid, bodyMat, ENEMY_POOL);
-    this.outline = new THREE.InstancedMesh(grid, outlineMat, ENEMY_POOL);
+    this.body = new THREE.InstancedMesh(grid, bodyMat, BODY_CAP);
+    this.outline = new THREE.InstancedMesh(grid, outlineMat, BODY_CAP);
     this.outline.instanceMatrix = this.body.instanceMatrix;
     this.body.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     for (const m of [this.body, this.outline]) {
@@ -272,6 +315,74 @@ export class EnemyRenderer implements EnemyFxSink {
     system.fx = this;
   }
 
+  // ───────────── elite caption tags ─────────────
+
+  private tagMaterial(a: EliteAffix): THREE.SpriteMaterial | null {
+    let m = this.tagMats.get(a);
+    if (m) return m;
+    if (typeof document === 'undefined') return null;
+    const [key, fallback] = TAG_KEYS[a];
+    const t = this.label?.(key);
+    const text = t && t !== key ? t : fallback;
+    const c = document.createElement('canvas');
+    c.width = 256;
+    c.height = 64;
+    const g = c.getContext('2d');
+    if (!g) return null;
+    const tint = a === 'firstEdition' ? PAL.glowCore : a === 'inkedIn' ? PAL.teal[3] : PAL.red[2];
+    g.fillStyle = PAL.ink;
+    g.fillRect(6, 10, 244, 44);
+    g.fillStyle = PAL.paper;
+    g.fillRect(10, 14, 236, 36);
+    g.fillStyle = tint;
+    g.fillRect(10, 14, 10, 36);
+    g.fillStyle = PAL.ink;
+    g.font = '900 26px "Bangers", Impact, "Arial Black", sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText(text.toLocaleUpperCase(document.documentElement.lang || 'en'), 133, 33, 220);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.NoColorSpace;
+    m = new THREE.SpriteMaterial({ map: tex, depthTest: false, alphaTest: 0.5, transparent: false });
+    this.tagMats.set(a, m);
+    return m;
+  }
+
+  /** Language changed: rebuild the caption textures on next use. */
+  refreshLabels(): void {
+    for (const m of this.tagMats.values()) {
+      m.map?.dispose();
+      m.dispose();
+    }
+    this.tagMats.clear();
+    for (const s of this.tags) s.visible = false;
+  }
+
+  private writeTags(): void {
+    let n = 0;
+    const pool = this.system.pool;
+    for (let i = 0; i < pool.length && n < TAG_CAP; i++) {
+      const e = pool[i]!;
+      if (!e.alive || !e.elite || e.revealVis < 0.4) continue;
+      const mat = this.tagMaterial(e.elite);
+      if (!mat) return;
+      let s = this.tags[n];
+      if (!s) {
+        s = new THREE.Sprite(mat);
+        s.renderOrder = 5;
+        s.frustumCulled = false;
+        s.scale.set(1.4, 0.35, 1);
+        this.tags.push(s);
+        this.root.add(s);
+      }
+      s.material = mat;
+      s.visible = true;
+      s.position.set(e.position.x, e.position.y + KIND_H[e.kind] * 1.6 + 0.75, e.position.z);
+      n++;
+    }
+    for (let i = n; i < this.tags.length; i++) this.tags[i]!.visible = false;
+  }
+
   /** Per rendered frame. `dt` should already include hit-stop/time scale. */
   update(dt: number, camera?: THREE.Camera): void {
     this.time += dt;
@@ -290,68 +401,139 @@ export class EnemyRenderer implements EnemyFxSink {
 
     this.writeBodies(cp);
     this.writeFx(cp);
+    this.writeTags();
     this.stepParticles(dt, camera);
   }
 
   private writeBodies(cp: THREE.Vector3): void {
     const pool = this.system.pool;
-    const A = this.aA.array as Float32Array;
-    const B = this.aB.array as Float32Array;
-    const C = this.aC.array as Float32Array;
-    const D = this.aD.array as Float32Array;
-    const M = this.body.instanceMatrix.array as Float32Array;
+    const mp = this.system.tuning.enemies.misprintAi;
     let n = 0;
     for (let i = 0; i < pool.length; i++) {
       const e = pool[i]!;
-      if (!e.active) continue;
-      const o = n * 4;
-      A[o] = KIND_INDEX[e.kind];
-      A[o + 1] = e.seed;
-      A[o + 2] = e.revealVis;
-      A[o + 3] = e.spawnT;
-      B[o] = e.hitT;
-      B[o + 1] = e.state === AiState.Die ? Math.max(1e-3, e.deathT) : 0;
-      B[o + 2] = e.windup;
-      B[o + 3] = e.recoil;
-      C[o] = e.lunge;
-      C[o + 1] = e.drain;
-      C[o + 2] = e.lagX;
-      C[o + 3] = e.lagZ;
-      D[o] = Math.min(1.2, e.speed01);
-      D[o + 1] = e.alive ? Math.max(0, e.hp / e.maxHp) : 0;
-      const c = Math.cos(e.yaw);
-      const s = Math.sin(e.yaw);
-      let dx = cp.x - e.position.x;
-      let dz = cp.z - e.position.z;
-      const dl = Math.sqrt(dx * dx + dz * dz) || 1;
-      dx /= dl;
-      dz /= dl;
-      D[o + 2] = dx * c - dz * s;
-      D[o + 3] = dx * s + dz * c;
-      // yaw-only transform, column-major
-      const m = n * 16;
-      M[m] = c;
-      M[m + 1] = 0;
-      M[m + 2] = -s;
-      M[m + 3] = 0;
-      M[m + 4] = 0;
-      M[m + 5] = 1;
-      M[m + 6] = 0;
-      M[m + 7] = 0;
-      M[m + 8] = s;
-      M[m + 9] = 0;
-      M[m + 10] = c;
-      M[m + 11] = 0;
-      M[m + 12] = e.position.x;
-      M[m + 13] = e.position.y;
-      M[m + 14] = e.position.z;
-      M[m + 15] = 1;
-      n++;
+      if (!e.active || e.kind === 'cranes') continue;
+      if (e.kind === 'misprint' && e.alive && e.align < 1) {
+        // three plates out of register, sliding together as `align` → 1
+        const mag = mp.spread * (1 - e.align);
+        for (let k = 0; k < 3 && n < BODY_CAP; k++) {
+          const a = e.seed * 6.283 + k * 2.094 + this.time * 0.6;
+          n = this.putEnemy(n, e, e.position.x + Math.cos(a) * mag, e.position.z + Math.sin(a) * mag, k, cp);
+        }
+        continue;
+      }
+      if (n < BODY_CAP) n = this.putEnemy(n, e, e.position.x, e.position.z, 3, cp);
+    }
+    const cranes = this.system.cranes;
+    for (let i = 0; i < cranes.length && n < BODY_CAP; i++) {
+      const c = cranes[i]!;
+      if (!c.active) continue;
+      n = this.putCrane(n, c, cp);
     }
     this.body.count = n;
     this.outline.count = n;
     this.aA.needsUpdate = this.aB.needsUpdate = this.aC.needsUpdate = this.aD.needsUpdate = true;
+    this.aE.needsUpdate = true;
     this.body.instanceMatrix.needsUpdate = true;
+  }
+
+  private putEnemy(n: number, e: Enemy, x: number, z: number, variant: number, cp: THREE.Vector3): number {
+    const o = n * 4;
+    const A = this.aA.array as Float32Array;
+    const B = this.aB.array as Float32Array;
+    const C = this.aC.array as Float32Array;
+    const D = this.aD.array as Float32Array;
+    const E = this.aE.array as Float32Array;
+    A[o] = KIND_INDEX[e.kind];
+    A[o + 1] = e.seed;
+    A[o + 2] = e.revealVis;
+    A[o + 3] = e.spawnT;
+    B[o] = e.hitT;
+    B[o + 1] = e.state === AiState.Die ? Math.max(1e-3, e.deathT) : 0;
+    B[o + 2] = e.windup;
+    B[o + 3] = e.recoil;
+    C[o] = e.lunge;
+    C[o + 1] = e.drain;
+    C[o + 2] = e.lagX;
+    C[o + 3] = e.lagZ;
+    D[o] = Math.min(1.2, e.speed01);
+    D[o + 1] = e.alive ? Math.max(0, e.hp / e.maxHp) : 0;
+    E[o] = variant;
+    E[o + 1] = e.elite ? ELITE_INDEX[e.elite] : 0;
+    E[o + 2] =
+      e.kind === 'redactor' ? e.expose : e.kind === 'marginMan' ? (e.vulnT > 0 || e.worn ? 1 : 0) : 0;
+    E[o + 3] = e.kind === 'redactor' ? e.shield : 0;
+    this.writeMatrix(n, x, e.position.y, z, e.yaw, cp, D, o);
+    return n + 1;
+  }
+
+  private putCrane(n: number, c: CraneTarget, cp: THREE.Vector3): number {
+    const o = n * 4;
+    const A = this.aA.array as Float32Array;
+    const B = this.aB.array as Float32Array;
+    const C = this.aC.array as Float32Array;
+    const D = this.aD.array as Float32Array;
+    const E = this.aE.array as Float32Array;
+    const sw = c.swarm;
+    A[o] = KIND_INDEX.cranes;
+    A[o + 1] = c.seed;
+    A[o + 2] = c.revealVis;
+    A[o + 3] = sw ? sw.spawnT : 1;
+    B[o] = c.hitT;
+    B[o + 1] = c.alive ? 0 : Math.max(1e-3, c.dieT);
+    B[o + 2] = c.mode === CraneMode.Fold ? c.fold : 0;
+    B[o + 3] = 0;
+    C[o] = c.mode === CraneMode.Dive ? 1 : 0;
+    C[o + 1] = 0;
+    C[o + 2] = 0;
+    C[o + 3] = 0;
+    D[o] = 0;
+    D[o + 1] = c.alive ? 1 : 0;
+    E[o] = 3;
+    E[o + 1] = 0;
+    E[o + 2] = c.fold;
+    E[o + 3] = 0;
+    this.writeMatrix(n, c.position.x, c.position.y, c.position.z, c.yaw, cp, D, o);
+    return n + 1;
+  }
+
+  /** Yaw-only instance transform (column-major) + local crystal direction into aD.zw. */
+  private writeMatrix(
+    n: number,
+    x: number,
+    y: number,
+    z: number,
+    yaw: number,
+    cp: THREE.Vector3,
+    D: Float32Array,
+    o: number,
+  ): void {
+    const M = this.body.instanceMatrix.array as Float32Array;
+    const c = Math.cos(yaw);
+    const s = Math.sin(yaw);
+    let dx = cp.x - x;
+    let dz = cp.z - z;
+    const dl = Math.sqrt(dx * dx + dz * dz) || 1;
+    dx /= dl;
+    dz /= dl;
+    D[o + 2] = dx * c - dz * s;
+    D[o + 3] = dx * s + dz * c;
+    const m = n * 16;
+    M[m] = c;
+    M[m + 1] = 0;
+    M[m + 2] = -s;
+    M[m + 3] = 0;
+    M[m + 4] = 0;
+    M[m + 5] = 1;
+    M[m + 6] = 0;
+    M[m + 7] = 0;
+    M[m + 8] = s;
+    M[m + 9] = 0;
+    M[m + 10] = c;
+    M[m + 11] = 0;
+    M[m + 12] = x;
+    M[m + 13] = y;
+    M[m + 14] = z;
+    M[m + 15] = 1;
   }
 
   private writeFx(cp: THREE.Vector3): void {
@@ -367,10 +549,14 @@ export class EnemyRenderer implements EnemyFxSink {
       const z = e.position.z;
       // shadow
       const dead = e.state === AiState.Die ? e.deathT : 0;
-      const r = e.radius * (e.kind === 'blot' ? 1.55 : 1.2) * (0.3 + 0.7 * e.spawnT);
-      const vis = e.revealVis * (1 - dead) * (e.kind === 'smudge' ? 0.85 : 1);
-      if (vis > 0.01) this.putFx(x - r, y, z, 2, x + r, y, z, r * 1.5, 0, e.seed, vis);
+      if (e.kind !== 'cranes') {
+        const rk = e.kind === 'blot' ? 1.55 : e.kind === 'redactor' ? 1.7 : 1.2;
+        const r = e.radius * rk * (0.3 + 0.7 * e.spawnT);
+        const vis = e.revealVis * (1 - dead) * (e.kind === 'smudge' || e.kind === 'misprint' ? 0.85 : 1);
+        if (vis > 0.01) this.putFx(x - r, y, z, 2, x + r, y, z, r * 1.5, 0, e.seed, vis);
+      }
       if (!e.alive) continue;
+      this.writeKindFx(e, y);
       // scribbler telegraph
       if (e.kind === 'scribbler' && e.state === AiState.Attack && e.phase === 0) {
         let dx = e.aimX - x;
@@ -399,6 +585,31 @@ export class EnemyRenderer implements EnemyFxSink {
         this.putFx(x, y + 0.55, z, 3, cp.x, cp.y - 0.25, cp.z, 0.2, e.windup, e.seed, Math.min(1, reach));
       }
     }
+    // crane dive telegraphs: the folding crane scratches its line at the player
+    const cranes = sys.cranes;
+    for (let i = 0; i < cranes.length; i++) {
+      const c = cranes[i]!;
+      if (!c.alive) continue;
+      const gy = (c.swarm?.position.y ?? 0) + 0.03;
+      // a small ground shadow sells the height
+      const sr = 0.32;
+      if (c.revealVis > 0.01)
+        this.putFx(
+          c.position.x - sr,
+          gy,
+          c.position.z,
+          2,
+          c.position.x + sr,
+          gy,
+          c.position.z,
+          sr * 1.4,
+          0,
+          c.seed,
+          c.revealVis,
+        );
+      if (c.mode !== CraneMode.Fold) continue;
+      this.putFx(c.position.x, gy, c.position.z, 0, c.aimX, gy, c.aimZ, 0.16, c.fold, c.seed, 1);
+    }
     const pr = sys.projectiles;
     for (let i = 0; i < pr.capacity; i++) {
       if (!pr.active[i]) continue;
@@ -425,6 +636,56 @@ export class EnemyRenderer implements EnemyFxSink {
     this.fP0.needsUpdate = this.fP1.needsUpdate = this.fL.needsUpdate = true;
   }
 
+  /** Ground marks for the wave-1 kinds (unmasked pencil/ink lines = fair telegraphs). */
+  private writeKindFx(e: Enemy, y: number): void {
+    const x = e.position.x;
+    const z = e.position.z;
+    if (e.kind === 'marginMan' && e.state === AiState.Stalk && e.phase === MARGIN_TELL) {
+      const k = Math.min(1, e.timerA / Math.max(1e-3, this.system.tuning.enemies.marginAi.stepTell));
+      this.putFx(x, y + 0.01, z, 0, e.bx, y + 0.01, e.bz, 0.14, k, e.seed, 1);
+    } else if (e.kind === 'redactor' && e.shield > 0) {
+      this.putFx(e.ax, y + 0.01, e.az, 0, e.bx, y + 0.01, e.bz, 0.1, 0.25, e.seed, 1);
+    } else if (e.kind === 'panelWarden' && e.state === AiState.Attack) {
+      const wa = this.system.tuning.enemies.wardenAi;
+      const preview = e.phase === WARDEN_WINDUP;
+      const h = preview ? wa.boxSize * 0.5 : e.boxHalf;
+      if (h > 0 && (preview || e.phase === WARDEN_BOX)) this.putBox(e.ax, y + 0.015, e.az, h, preview, e);
+    }
+  }
+
+  private putBox(cx: number, y: number, cz: number, h: number, preview: boolean, e: Enemy): void {
+    const w = 0.22;
+    const dash = preview ? 1 : 0;
+    const x0 = cx - h;
+    const x1 = cx + h;
+    const z0 = cz - h;
+    const z1 = cz + h;
+    this.putFx(x0, y, z0, 4, x1, y, z0, w, 0, e.seed, 1, dash);
+    this.putFx(x1, y, z0, 4, x1, y, z1, w, 0, e.seed, 1, dash);
+    this.putFx(x1, y, z1, 4, x0, y, z1, w, 0, e.seed, 1, dash);
+    this.putFx(x0, y, z1, 4, x0, y, z0, w, 0, e.seed, 1, dash);
+    if (preview) return;
+    // the seam: a dashed cut across one corner — dash through it
+    const sx = e.seam & 1 ? 1 : -1;
+    const sz = e.seam & 2 ? 1 : -1;
+    const qx = cx + sx * h;
+    const qz = cz + sz * h;
+    const pulse = 0.55 + 0.45 * Math.sin(this.time * 9);
+    this.putFx(
+      qx - sx * 0.9,
+      y + 0.01,
+      qz - sz * 0.9,
+      0,
+      qx + sx * 0.9,
+      y + 0.01,
+      qz + sz * 0.9,
+      0.3,
+      pulse,
+      e.seed,
+      1,
+    );
+  }
+
   private fxN = 0;
   private putFx(
     ax: number,
@@ -438,6 +699,7 @@ export class EnemyRenderer implements EnemyFxSink {
     prog: number,
     seed: number,
     vis: number,
+    extra = 0,
   ): void {
     if (this.fxN >= FX_CAP) return;
     const P0 = this.fP0.array as Float32Array;
@@ -455,7 +717,7 @@ export class EnemyRenderer implements EnemyFxSink {
     L[o] = prog;
     L[o + 1] = seed;
     L[o + 2] = vis;
-    L[o + 3] = 0;
+    L[o + 3] = extra;
     this.fxN++;
   }
 
@@ -500,8 +762,9 @@ export class EnemyRenderer implements EnemyFxSink {
     const f = this.system.tuning.enemies.fx;
     const x = e.position.x;
     const z = e.position.z;
-    const paper = e.kind !== 'blot';
-    const h = e.kind === 'scribbler' ? 1.3 : e.kind === 'smudge' ? 0.8 : 0.35;
+    if (e.kind === 'cranes') return; // each crane tears on its own (craneDeath)
+    const paper = !INK_KIND[e.kind];
+    const h = KIND_H[e.kind];
     const n = paper ? f.scraps : 4;
     for (let k = 0; k < n; k++) {
       const a = Math.random() * Math.PI * 2;
@@ -544,8 +807,9 @@ export class EnemyRenderer implements EnemyFxSink {
     const d = Math.sqrt(dx * dx + dz * dz) || 1;
     dx /= d;
     dz /= d;
-    const paper = e.kind !== 'blot';
-    const y = e.position.y + (e.kind === 'scribbler' ? 1.1 : 0.6);
+    if (e.kind === 'cranes') return;
+    const paper = !INK_KIND[e.kind];
+    const y = e.position.y + KIND_H[e.kind] * 0.85;
     for (let k = 0; k < 6; k++) {
       const s = 2 + Math.random() * 2.5;
       const j = (Math.random() - 0.5) * 1.6;
@@ -559,6 +823,25 @@ export class EnemyRenderer implements EnemyFxSink {
         (-dz + dx * j) * s,
         paper ? 0.07 + Math.random() * 0.08 : 0.07,
         0.8,
+        Math.random(),
+      );
+    }
+  }
+
+  craneDeath(c: CraneTarget): void {
+    for (let k = 0; k < 7; k++) {
+      const a = Math.random() * Math.PI * 2;
+      const s = 1.5 + Math.random() * 2;
+      this.emit(
+        0,
+        c.position.x,
+        c.position.y,
+        c.position.z,
+        Math.cos(a) * s,
+        1 + Math.random() * 2,
+        Math.sin(a) * s,
+        0.08 + Math.random() * 0.08,
+        0.9,
         Math.random(),
       );
     }
@@ -665,6 +948,7 @@ export class EnemyRenderer implements EnemyFxSink {
       (m.material as THREE.Material).dispose();
     }
     (this.outline.material as THREE.Material).dispose();
+    this.refreshLabels();
     this.root.removeFromParent();
     if (this.system.fx === this) this.system.fx = null;
   }

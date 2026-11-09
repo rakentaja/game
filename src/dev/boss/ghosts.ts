@@ -87,7 +87,7 @@ export class StubGhosts {
 
   spawn(kind: EnemyKind, x: number, z: number, scene: THREE.Scene): void {
     if (this.count >= TUNING.enemies.maxActive) return;
-    const k = kind === 'blot' ? 'smudge' : kind;
+    const k = kind === 'scribbler' ? 'scribbler' : 'smudge';
     const m = new THREE.Mesh(this.geo, this.mats[k]);
     for (const sx of [-1, 1]) {
       const e = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 4), this.eye);
