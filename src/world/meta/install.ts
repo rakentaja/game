@@ -15,8 +15,21 @@ import type { CaptionEffect, GameContext, LevelDef, PageId } from '../../core/ty
 import { TUNING } from '../../data/tuning';
 import { getLevel } from '../levels';
 import { CaptionDirector } from './CaptionDirector';
-import { type DailyInfo, dailyInfo, dailyLevel, isoDate } from './daily';
-import { GhostInker, GhostRecorder, loadGhost, saveGhostIfBest } from './ghost';
+import { type DailyInfo, dailyInfo, isoDate } from './daily';
+import type { dailyLevel as DailyLevelFn } from './daily-level';
+import { GhostRecorder, type GhostTrack, loadGhost, saveGhostIfBest } from './ghost';
+import type { GhostInker } from './ghost-inker';
+
+// Daily variants and the ghost silhouette are lazy chunks (most runs need neither)
+let dailyLevelFn: typeof DailyLevelFn | null = null;
+let dailyMod: Promise<void> | null = null;
+function loadDaily(): Promise<void> {
+  dailyMod ??= import('./daily-level').then((m) => {
+    dailyLevelFn = m.dailyLevel;
+  });
+  return dailyMod;
+}
+
 import { RUN_MODS, resetRunMods } from './mods';
 
 export interface MetaOptions {
@@ -41,6 +54,8 @@ export class MetaRuntime {
   readonly director: CaptionDirector;
   private readonly rec = new GhostRecorder();
   private ghost: GhostInker | null = null;
+  private ghostLoading = false;
+  private ghostTrack: GhostTrack | null = null;
   private page: PageId | null = null;
   private pageTime = 0;
   private threats: Threat[] = [];
@@ -109,6 +124,11 @@ export class MetaRuntime {
     this.director.startRun();
   }
 
+  /** Resolves once the current mode's lazy modules (Daily variants) are loaded. */
+  ready(): Promise<void> {
+    return this.daily ? loadDaily().catch((e) => console.warn('daily module failed', e)) : Promise.resolve();
+  }
+
   /** The LevelDef to build for `page` in the current mode (daily variants are cached). */
   levelFor(page: PageId): LevelDef {
     const base = getLevel(page);
@@ -117,8 +137,12 @@ export class MetaRuntime {
     const k = `${d.key}:${page}`;
     let def = this.levelCache.get(k);
     if (!def) {
+      if (!dailyLevelFn) {
+        void loadDaily();
+        return base;
+      }
       try {
-        def = dailyLevel(base, d);
+        def = dailyLevelFn(base, d);
       } catch (e) {
         console.warn('daily variant failed, using the authored page', e);
         def = base;
@@ -146,10 +170,15 @@ export class MetaRuntime {
     this.threats.length = 0;
     this.fogT = 0;
     this.director.pageStart(page);
-    if (this.ghostEnabled) {
-      if (!this.ghost) this.ghost = new GhostInker(this.ctx);
-      this.ghost.setTrack(loadGhost(this.ghostSlot, page));
-    } else this.ghost?.setTrack(null);
+    this.ghostTrack = this.ghostEnabled ? loadGhost(this.ghostSlot, page) : null;
+    if (this.ghostTrack && !this.ghost && !this.ghostLoading) {
+      this.ghostLoading = true;
+      void import('./ghost-inker').then((m) => {
+        this.ghost ??= new m.GhostInker(this.ctx);
+        this.ghost.setTrack(this.page !== null ? this.ghostTrack : null);
+      });
+    }
+    this.ghost?.setTrack(this.ghostTrack);
     if (this.daily) {
       this.caption(`daily.rule.${this.daily.rule}`);
       this.director.markShown('daily');
@@ -159,6 +188,7 @@ export class MetaRuntime {
   /** Leaving play (title / cover). */
   detachPage(): void {
     this.page = null;
+    this.ghostTrack = null;
     this.ghost?.setTrack(null);
     for (const t of this.threats) this.ctx.events.emit('caption:cancel', { id: t.id });
     this.threats.length = 0;

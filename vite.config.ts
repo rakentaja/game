@@ -12,6 +12,16 @@ export default defineConfig({
     chunkSizeWarningLimit: 900,
     rolldownOptions: {
       output: {
+        // modules shared by the entry and lazy chunks: one "boot" chunk instead of six tiny ones
+        // (each extra initial file costs gzip context + a request)
+        codeSplitting: {
+          groups: [
+            {
+              name: 'boot',
+              test: /[\\/]src[\\/](data[\\/](tuning|palette)|systems[\\/]combat|core[\\/]storage|ui[\\/]dom)\.ts$|preload-helper|rolldown-runtime/,
+            },
+          ],
+        },
         // co-op/net chunks get a `net-` prefix so the service worker can skip precaching them
         // (solo players never download the lobby, Trystero or the MQTT fallback)
         chunkFileNames: (c) =>

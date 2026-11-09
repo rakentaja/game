@@ -7,7 +7,7 @@ import { Triggers } from '../systems/triggers';
 import { InkWells } from './inkWells';
 import { type BuildOptions, type BuiltLevel, buildLevel } from './LevelBuilder';
 import { getLevel } from './levels';
-import { EditorHand } from './meta/EditorHand';
+import type { EditorHand } from './meta/EditorHand';
 import { installInkMemory } from './meta/inkMemory';
 import { type MisprintTarget, MisprintZones } from './meta/misprint';
 
@@ -111,11 +111,20 @@ export function installLevel(
   const misprints = def.misprints?.length
     ? new MisprintZones(def.misprints, renderAny.misprint ? (renderAny as MisprintTarget) : null)
     : null;
-  const hands = (def.editorHands ?? []).map((hd) => ({
-    trigger: hd.trigger,
-    hand: new EditorHand(ctx, hd.path, (x, z) => built.collision.groundHeight(x, z)),
-  }));
-  const offHands = hands.length
+  // the Editor's Hand is a lazy chunk (only page 2 has one; it is triggered well into the page)
+  const hands: { trigger: string; hand: EditorHand }[] = [];
+  const handList: EditorHand[] = [];
+  let disposed = false;
+  if (def.editorHands?.length)
+    void import('./meta/EditorHand').then((m) => {
+      if (disposed) return;
+      for (const hd of def.editorHands ?? []) {
+        const hand = new m.EditorHand(ctx, hd.path, (x, z) => built.collision.groundHeight(x, z));
+        hands.push({ trigger: hd.trigger, hand });
+        handList.push(hand);
+      }
+    });
+  const offHands = def.editorHands?.length
     ? ctx.events.on('trigger:fired', (e) => {
         for (const h of hands) if (h.trigger === e.id) h.hand.start();
       })
@@ -133,7 +142,7 @@ export function installLevel(
     checkpoints,
     wells,
     rain,
-    hands: hands.map((h) => h.hand),
+    hands: handList,
     replica: false,
     coop: null,
     start(checkpointId) {
@@ -171,6 +180,7 @@ export function installLevel(
       ctx.render.renderer.getDrawingBufferSize(resolution);
     },
     dispose() {
+      disposed = true;
       offCleared();
       offHands?.();
       memory.dispose();
