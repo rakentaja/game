@@ -184,6 +184,129 @@ export const TUNING = {
       stopDistance: 1.1,
     },
     fx: { scraps: 18, droplets: 10, maxParticles: 160, scrapSpeed: 4.2, gravity: 11, particleLife: 1.3 },
+
+    // ── Idea Ledger wave 1 (workstream: enemies) ──
+    marginMan: { hp: 2, speed: 3, damage: 1, inkDrop: 10 },
+    redactor: { hp: 2, speed: 1.6, damage: 1, inkDrop: 12 },
+    panelWarden: { hp: 3, speed: 1.5, damage: 1, inkDrop: 12 },
+    misprint: { hp: 2, speed: 1.7, damage: 1, inkDrop: 9 },
+    /** One swarm entity; hp is unused (one hit per crane), speed is the boid cruise speed. */
+    cranes: { hp: 1, speed: 3.4, damage: 1, inkDrop: 12 },
+    /** Margin Man: frozen inside the reveal, blinks toward the player outside it. */
+    marginAi: {
+      radius: 0.4,
+      /** Seconds between blink steps while outside the mask. */
+      stepEvery: 0.95,
+      stepDist: 2.3,
+      /** Shutter-click tell before each blink. */
+      stepTell: 0.3,
+      strikeRange: 1.7,
+      windup: 0.65,
+      /** Hittable window after a dash ink trail crosses it. */
+      vulnerableS: 2,
+      /** Dash segment ↔ body distance that counts as "crossed". */
+      dashWidth: 0.9,
+    },
+    /** Redactor: censorship bar, bolt-immune until the held crystal covers it for `exposeS`. */
+    redactorAi: {
+      radius: 0.6,
+      exposeS: 1,
+      /** Exposure lost per second when the crystal looks away. */
+      exposeDecay: 0.7,
+      laneLen: 6,
+      slideSpeed: 1.6,
+      /** Reveal suppression while the crystal is inside its lane (multiplier on target radius). */
+      suppress: 0.5,
+      laneHalfWidth: 1.6,
+      /** It also censors the inked history along its slide. */
+      eraseHalfWidth: 0.45,
+      eraseEvery: 0.3,
+    },
+    /** Panel Warden: drops a shrinking panel border around the player; the gutter hurts. */
+    wardenAi: {
+      radius: 0.45,
+      keepRange: 7.5,
+      castRange: 11,
+      windup: 0.9,
+      boxSize: 6,
+      boxMin: 2.2,
+      shrinkS: 4,
+      gutterGrace: 0.5,
+      gutterTick: 1,
+      cooldown: 4.5,
+      /** Dashing within this of the telegraphed corner seam cuts the panel. */
+      seamRadius: 1.2,
+    },
+    /** Misprint: CMYK ghost layers align into one hittable body for `window` every `period`. */
+    misprintAi: {
+      radius: 0.45,
+      period: 2.5,
+      window: 0.6,
+      /** Layers slide together over this long before the window (telegraph). */
+      converge: 0.45,
+      spread: 1.1,
+      /** Phase-lock the window to `audio:beat` when beats arrive (± half a beat). */
+      beatSnap: true,
+    },
+    /** Origami Crane Swarm: pooled boids counted as one enemy. */
+    craneAi: {
+      radius: 0.3,
+      countMin: 5,
+      countMax: 7,
+      ringOffset: 0.25,
+      orbitSpeed: 2.4,
+      flyHeight: 1.3,
+      diveEvery: 2.2,
+      fold: 0.55,
+      diveSpeed: 9,
+      diveTime: 0.75,
+      returnTime: 0.9,
+      scatterRadius: 2.4,
+      scatterS: 1.6,
+      scatterImpulse: 7,
+    },
+    /** Elite affixes: chance per rolled spawn (× difficulty.eliteMul). */
+    elites: {
+      chance: 0.12,
+      firstEditionHp: 1,
+      inkedInHold: 1.5,
+      bleedHp: 1,
+      bleedSpeed: 1.25,
+      outlineMul: 1.7,
+    },
+    /** "The Inker's Deadline" encounter director, layered on the authored spawner. */
+    director: {
+      /** Trigger ids that open a director moment → max seconds it may run. */
+      moments: { p2_gate_ambush: 14, p2_mist: 16, p3_arena: 22 } as Record<string, number>,
+      budgetPerSec: 0.55,
+      budgetMax: 6,
+      /** Spawn cap per moment (× difficulty.deadline). */
+      maxSpawns: 4,
+      cost: { fodder: 1, zoner: 2, flanker: 2, support: 2.5, priority: 4 },
+      weight: { fodder: 3, zoner: 2, flanker: 2, support: 1.2, priority: 0.8 },
+      /** Leave this many maxActive slots free for authored waves. */
+      reserve: 1,
+      spawnMin: 8,
+      spawnMax: 11,
+      spawnEvery: 1.2,
+      peakAt: 0.72,
+      relaxBelow: 0.3,
+      buildMaxS: 12,
+      peakS: 5,
+      relaxS: 6,
+      /** Intensity inputs. */
+      damageNorm: 2,
+      damageHalfLife: 6,
+      lowInk: 0.4,
+      enemiesNorm: 5,
+      nearRange: 13,
+      wDamage: 0.45,
+      wInk: 0.25,
+      wEnemies: 0.45,
+      smooth: 2.5,
+      relaxDrops: 2,
+      relaxDropAmount: 12,
+    },
   },
   boss: {
     scale: 4,
@@ -308,8 +431,23 @@ export const TUNING = {
       enemySpeed: 0.85,
       drainMul: 0.6,
       maxAttackers: 1,
+      // enemies wave 1: gimmick enemies become bolt-killable after this long alive; elite chance
+      // multiplier; "Deadline" director scale (0 disables it)
+      gimmickFallback: 7,
+      eliteMul: 0.4,
+      deadline: 0.5,
     },
-    normal: { damageTaken: 1, energyCost: 1, enemyTempo: 1, enemySpeed: 1, drainMul: 1, maxAttackers: 2 },
+    normal: {
+      damageTaken: 1,
+      energyCost: 1,
+      enemyTempo: 1,
+      enemySpeed: 1,
+      drainMul: 1,
+      maxAttackers: 2,
+      gimmickFallback: 18,
+      eliteMul: 1,
+      deadline: 1,
+    },
   },
   quality: {
     targetFrameMs: 16.7,

@@ -28,6 +28,7 @@ import { EnemySystem } from '../entities/enemies/EnemySystem';
 import { installPlayer, type Player } from '../entities/Player';
 import { type FxSystem, installFx } from '../fx';
 import { InkRenderer, installRender, RevealSystem } from '../render';
+import { Director, directorWorld } from '../systems/ai/director';
 import { type Combat, installCombat } from '../systems/combat';
 import { InkEnergy, type InkPickups, installInkPickups } from '../systems/ink-energy';
 import { Spawner } from '../systems/spawner';
@@ -189,15 +190,23 @@ export class Game {
         stats: ctx.stats,
         collision: this.collision,
         settings: ctx.settings,
+        get beat() {
+          return ctx.beat ?? null;
+        },
       },
       FLAGS.seed,
     );
     this.enemyGfx = new EnemyRenderer(this.enemies, {
       crystalPos: () => this.player.crystalPos,
       inkContext: { shared: this.render.shared, reveal: ctx.reveal.uniforms },
+      label: (k) => ctx.t(k),
     });
     this.render.scene.add(this.enemyGfx.root);
     this.spawner = new Spawner(ctx.events, this.enemies);
+    // "The Inker's Deadline": director moments layered on the authored waves
+    this.spawner.director = new Director(ctx.events, TUNING, directorWorld(this.enemies), {
+      scale: () => TUNING.difficulty[ctx.settings.difficulty]?.deadline ?? 1,
+    });
     this.wireEvents();
     this.player.object.visible = false;
 
@@ -343,6 +352,15 @@ export class Game {
       if (e.last) ev.emit('trigger:fired', { id: `${e.trigger}_cleared` });
     });
     ev.on('tutorial:hint', (e) => ev.emit('ui:tutorial', e));
+    ev.on('settings:changed', (e) => {
+      if (e.key === 'lang' || e.key === '*') this.enemyGfx?.refreshLabels();
+    });
+    // bonus ink (First Edition elites, director relax beats); regular death drops come from enemy:died
+    ev.on('ink:drop', (e) => {
+      if (!e.bonus) return;
+      const [x, , z] = e.position;
+      this.pickups.spawn(x, this.collision.groundHeight(x, z), z, e.amount);
+    });
     ev.on('spawn:request', (e) => {
       this.enemies.spawn(e.kind, e.x, e.z);
     });

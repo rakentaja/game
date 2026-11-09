@@ -192,7 +192,7 @@ export function validateLevel(def: LevelDef, data: LevelData = buildLevelData(de
 
   const pathLength = data.path.length;
   const counts = { smudge: 0, scribbler: 0, blot: 0 };
-  for (const s of def.spawns) counts[s.kind]++;
+  for (const s of def.spawns) if (s.kind in counts) counts[s.kind as keyof typeof counts]++;
   const hints = def.triggers.filter((t) => t.action?.type === 'tutorial').length;
   const estimateS =
     pathLength / 3.4 +

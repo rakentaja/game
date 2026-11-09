@@ -16,7 +16,13 @@ export interface GameEvents {
   'enemy:revealed': { id: number; kind: EnemyKind; first: boolean };
   'enemy:died': { id: number; kind: EnemyKind; position: [number, number, number] };
   /** Enemy death drops ink at `position`; ink-energy decides pickup (enemies workstream). */
-  'ink:drop': { position: [number, number, number]; amount: number; kind: EnemyKind };
+  'ink:drop': {
+    position: [number, number, number];
+    amount: number;
+    kind: EnemyKind;
+    /** Extra ink on top of the regular death drop (elite refill, director relax). Game spawns pickups for these. */
+    bonus?: boolean;
+  };
   /** An enemy starts a readable attack windup (sound + UI cue). `duration` = seconds until it lands. */
   'enemy:telegraph': { id: number; kind: EnemyKind; duration: number };
   /** Spawner: every enemy of `wave` in trigger group `trigger` ('' = immediate group) is dead. */

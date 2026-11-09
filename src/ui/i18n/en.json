@@ -166,6 +166,19 @@
     "swish": "SWISH!",
     "scrub": "SCRUB!",
     "crumple": "CRUMPLE!",
+    "shff": "SHFF!",
+    "splotch": "SPLOTCH!",
+    "klik": "KLIK!",
+    "redacted": "[REDACTED]",
+    "misprint": "MISPRINT!",
+    "shink": "SHINK!",
     "fin": "THE END?"
+  },
+  "enemy": {
+    "elite": {
+      "firstEdition": "1st Edition",
+      "inkedIn": "Inked In",
+      "bleedThrough": "Bleed-Through"
+    }
   }
 }

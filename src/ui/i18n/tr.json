@@ -166,6 +166,19 @@
     "swish": "HIŞŞ!",
     "scrub": "SİL SİL!",
     "crumple": "HIŞIR!",
+    "shff": "HIŞŞ!",
+    "splotch": "ŞLOP!",
+    "klik": "ÇIT!",
+    "redacted": "[SANSÜR]",
+    "misprint": "BASKI HATASI!",
+    "shink": "ŞINK!",
     "fin": "SON MU?"
+  },
+  "enemy": {
+    "elite": {
+      "firstEdition": "1. Baskı",
+      "inkedIn": "Mürekkepli",
+      "bleedThrough": "Sızıntı"
+    }
   }
 }

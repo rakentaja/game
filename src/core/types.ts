@@ -14,7 +14,18 @@ import type { Tuning } from '../data/tuning';
 import type { EventBus, GameEvents } from './events';
 
 export type PageId = 1 | 2 | 3 | 'boss';
-export type EnemyKind = 'smudge' | 'scribbler' | 'blot';
+export type EnemyKind =
+  | 'smudge'
+  | 'scribbler'
+  | 'blot'
+  // Idea Ledger wave 1 (enemies workstream)
+  | 'marginMan'
+  | 'redactor'
+  | 'panelWarden'
+  | 'misprint'
+  | 'cranes';
+/** Elite affixes (enemies workstream): outline tint + caption tag. */
+export type EliteAffix = 'firstEdition' | 'inkedIn' | 'bleedThrough';
 export type DamageSource = EnemyKind | 'editor' | 'eraser' | 'hazard';
 export type Difficulty = 'story' | 'normal';
 export type Lang = 'tr' | 'en';
@@ -205,6 +216,8 @@ export interface Damageable {
   /** True while the target is winding up / telegraphing an attack (Close-Up Crits). Optional. */
   readonly attacking?: boolean;
   hit(amount: number, from: THREE.Vector3): void;
+  /** Freeze the target's AI for `seconds` and make it hittable regardless of its gimmick. Optional. */
+  stun?(seconds: number): void;
 }
 
 export interface EnemyAPI extends Damageable {
@@ -232,6 +245,8 @@ export interface SpawnDef {
   /** Spawns when the player enters this trigger id (or immediately if omitted). */
   trigger?: string;
   wave?: number;
+  /** Authored elite affix (otherwise elites are rolled from tuning × difficulty). */
+  elite?: EliteAffix;
 }
 
 export interface SketchObjectDef {

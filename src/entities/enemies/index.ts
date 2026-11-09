@@ -1,9 +1,11 @@
 import * as THREE from 'three';
 import type { GameContext } from '../../core/types';
+import { Director, directorWorld } from '../../systems/ai/director';
 import { Spawner } from '../../systems/spawner';
 import { EnemyRenderer, type EnemyRendererOptions } from './EnemyRenderer';
 import { EnemySystem } from './EnemySystem';
 
+export { CraneTarget } from './Cranes';
 export { Enemy } from './Enemy';
 export { EnemyRenderer } from './EnemyRenderer';
 export { EnemySystem, FIRST_REVEAL_WORD } from './EnemySystem';
@@ -32,10 +34,17 @@ export function install(ctx: GameContext, opts: EnemyRendererOptions = {}): Enem
       ctx.player
         ? ctx.player.crystalPos
         : fallback.set(ctx.reveal.center.x, ctx.reveal.center.y + 1.9, ctx.reveal.center.z),
+    label: (k) => ctx.t(k),
     ...opts,
   });
   ctx.render.scene.add(renderer.root);
   const spawner = new Spawner(ctx.events, system);
+  spawner.director = new Director(ctx.events, ctx.tuning, directorWorld(system), {
+    scale: () => ctx.tuning.difficulty[ctx.settings.difficulty]?.deadline ?? 1,
+  });
+  const offLang = ctx.events.on('settings:changed', (e) => {
+    if (e.key === 'lang' || e.key === '*') renderer.refreshLabels();
+  });
   const offPage = ctx.events.on('page:start', () => {
     system.clear();
     spawner.reset();
@@ -53,6 +62,7 @@ export function install(ctx: GameContext, opts: EnemyRendererOptions = {}): Enem
     },
     dispose() {
       offPage();
+      offLang();
       spawner.dispose();
       system.clear();
       renderer.dispose();
