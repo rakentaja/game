@@ -1075,6 +1075,15 @@ export class EnemySystem implements EnemyOwner, CraneOwner, BrainWorld {
     e.velocity.x = dx * 2.5;
     e.velocity.z = dz * 2.5;
     this.aliveN--;
+    // a swarm killed outright (area damage / hero kits hit the swarm, not one crane): its last
+    // cranes go with it — otherwise they linger as live, unkillable targets
+    for (const c of e.flock) {
+      if (!c.alive) continue;
+      c.alive = false;
+      c.dieT = 0;
+      this.deps.targets.remove(c);
+      this.fx?.craneDeath?.(c);
+    }
     if (this.deps.stats) this.deps.stats.ghostsInked++;
     const pos: [number, number, number] = [e.position.x, e.position.y, e.position.z];
     ev.emit('enemy:died', { id: e.id, kind: e.kind, position: pos });

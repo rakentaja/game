@@ -56,7 +56,7 @@ export class HeroRuntime {
     const ev: EventBus<GameEvents> = ctx.events;
     this.offs.push(
       ev.on('splash:changed', (e) => {
-        if (e.pid === 0) this.hud?.setSplash(e.value);
+        if (e.pid === this.player.slot) this.hud?.setSplash(e.value);
       }),
       // co-op: the lobby decided our hero (pair combos are installed by the co-op runtime)
       ev.on('coop:start', (e) => {

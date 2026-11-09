@@ -165,6 +165,13 @@ export function installLevel(
         sample.z = p.crystalPos.z;
         sample.radius = ctx.reveal.radius;
         wells.update(dt, pos.x, pos.z, pos.y, addEnergy);
+        // co-op: every wizard simulated on this machine drinks (local 2P player 2 too); an online
+        // partner drinks on its own machine
+        const ps = ctx.players;
+        if (ps && ps.length > 1)
+          for (const q of ps)
+            if (q !== p && !q.remote && !q.downed)
+              wells.update(0, q.position.x, q.position.z, q.position.y, (n) => q.addEnergy(n));
         misprints?.update(dt, pos.x, pos.z);
       } else {
         sample.held = false;
