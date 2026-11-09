@@ -167,5 +167,71 @@
     "scrub": "SCRUB!",
     "crumple": "CRUMPLE!",
     "fin": "THE END?"
+  },
+  "coop": {
+    "button": "Co-op",
+    "title": "Co-op",
+    "subtitle": "Two inkers, one page.",
+    "host": "Host a room",
+    "join": "Join",
+    "joinTitle": "Have a code?",
+    "codeLabel": "Room code",
+    "invalidCode": "Room codes are 6 letters and numbers.",
+    "share": "Share invite",
+    "copy": "Copy link",
+    "copied": "Invite link copied",
+    "copyFail": "Couldn’t copy — select the link and copy it by hand.",
+    "shareText": "Join my INKWAKE co-op page! Room code {code}",
+    "state": {
+      "connecting": "Connecting…",
+      "waiting": "Waiting for your partner…",
+      "connected": "Connected",
+      "reconnecting": "Partner dropped — holding their seat ({s}s)",
+      "failed": "Couldn’t connect",
+      "closed": "Left the room"
+    },
+    "phase": {
+      "signaling": "Looking for your partner…",
+      "ice": "Shaking hands…",
+      "fallback": "Trying the relay…"
+    },
+    "tier": {
+      "direct": "Direct",
+      "turn": "TURN relay",
+      "relay": "Cloud relay",
+      "loopback": "Local",
+      "none": "—"
+    },
+    "rtt": "{ms} ms",
+    "error": {
+      "full": "That room is already full.",
+      "version": "Your partner is on a different version.",
+      "hostLeft": "The host closed the room.",
+      "timeout": "Couldn’t reach your partner. Check the code and try again.",
+      "generic": "Something went wrong with the connection."
+    },
+    "you": "You",
+    "partner": "Partner",
+    "hostTag": "Host",
+    "guestTag": "Guest",
+    "empty": "Empty seat",
+    "ready": "Ready",
+    "notReady": "Not ready",
+    "readyUp": "Ready up",
+    "unready": "Not ready yet",
+    "start": "Start the issue",
+    "waitHost": "Waiting for the host to start…",
+    "waitReady": "Both players must be ready.",
+    "starting": "Inking the page…",
+    "leave": "Leave",
+    "retry": "Try again",
+    "pickHero": "Choose your hero",
+    "soon": "Coming in this issue",
+    "hero": {
+      "inker": "Inker",
+      "penciller": "Penciller",
+      "letterer": "Letterer",
+      "colorist": "Colorist"
+    }
   }
 }

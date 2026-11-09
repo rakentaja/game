@@ -167,5 +167,71 @@
     "scrub": "SİL SİL!",
     "crumple": "HIŞIR!",
     "fin": "SON MU?"
+  },
+  "coop": {
+    "button": "İkili Oyun",
+    "title": "İkili Oyun",
+    "subtitle": "İki mürekkepçi, tek sayfa.",
+    "host": "Oda kur",
+    "join": "Katıl",
+    "joinTitle": "Kodun var mı?",
+    "codeLabel": "Oda kodu",
+    "invalidCode": "Oda kodu 6 harf ve rakamdan oluşur.",
+    "share": "Daveti paylaş",
+    "copy": "Bağlantıyı kopyala",
+    "copied": "Davet bağlantısı kopyalandı",
+    "copyFail": "Kopyalanamadı — bağlantıyı seçip elle kopyala.",
+    "shareText": "INKWAKE’te birlikte oynayalım! Oda kodu {code}",
+    "state": {
+      "connecting": "Bağlanıyor…",
+      "waiting": "Ortağın bekleniyor…",
+      "connected": "Bağlandı",
+      "reconnecting": "Ortağın düştü — yeri tutuluyor ({s} sn)",
+      "failed": "Bağlanılamadı",
+      "closed": "Odadan çıkıldı"
+    },
+    "phase": {
+      "signaling": "Ortağın aranıyor…",
+      "ice": "El sıkışılıyor…",
+      "fallback": "Aktarıcı deneniyor…"
+    },
+    "tier": {
+      "direct": "Doğrudan",
+      "turn": "TURN aktarımı",
+      "relay": "Bulut aktarımı",
+      "loopback": "Yerel",
+      "none": "—"
+    },
+    "rtt": "{ms} ms",
+    "error": {
+      "full": "Bu oda zaten dolu.",
+      "version": "Ortağın farklı bir sürümde.",
+      "hostLeft": "Kurucu odayı kapattı.",
+      "timeout": "Ortağına ulaşılamadı. Kodu kontrol edip tekrar dene.",
+      "generic": "Bağlantıda bir sorun çıktı."
+    },
+    "you": "Sen",
+    "partner": "Ortak",
+    "hostTag": "Kurucu",
+    "guestTag": "Misafir",
+    "empty": "Boş koltuk",
+    "ready": "Hazır",
+    "notReady": "Hazır değil",
+    "readyUp": "Hazırım",
+    "unready": "Henüz değil",
+    "start": "Sayıyı başlat",
+    "waitHost": "Kurucunun başlatması bekleniyor…",
+    "waitReady": "İki oyuncu da hazır olmalı.",
+    "starting": "Sayfa mürekkepleniyor…",
+    "leave": "Ayrıl",
+    "retry": "Tekrar dene",
+    "pickHero": "Kahramanını seç",
+    "soon": "Bu sayıda geliyor",
+    "hero": {
+      "inker": "Mürekkepçi",
+      "penciller": "Kalemci",
+      "letterer": "Harfçi",
+      "colorist": "Renkçi"
+    }
   }
 }
