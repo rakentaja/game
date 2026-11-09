@@ -189,7 +189,11 @@
     "stetBolt": "AYNEN KALSIN! MÜREKKEP OKU GERİ DÖNDÜ",
     "stetDash": "AYNEN KALSIN! ATILMA GERİ DÖNDÜ",
     "stetCrystal": "AYNEN KALSIN! KRİSTAL GERİ DÖNDÜ",
-    "stetPrint": "AYNEN KALSIN! BASKI GERİ DÖNDÜ"
+    "stetPrint": "AYNEN KALSIN! BASKI GERİ DÖNDÜ",
+    "splash": "SIÇRAMA SAYFASI!",
+    "layout": "SAYFA DÜZENİ!",
+    "sfxStorm": "EFEKT FIRTINASI!",
+    "fourColor": "DÖRT RENK!"
   },
   "style": {
     "label": "Editör notu: {grade}",

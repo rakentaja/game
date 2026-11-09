@@ -166,8 +166,9 @@ describe('NetSession over loopback', () => {
     expect(L.guest.players).toHaveLength(2);
     expect(L.guest.slot).toBe(1);
 
-    // only Inker is playable
-    expect(L.guest.pick('colorist')).toBe(false);
+    // all four heroes are playable (wave 2); unknown ids are rejected
+    expect(L.guest.pick('colorist')).toBe(true);
+    expect(L.guest.pick('nobody' as never)).toBe(false);
     expect(L.guest.pick('inker')).toBe(true);
 
     expect(L.host.canStart()).toBe(false);

@@ -1,0 +1,97 @@
+/* Hero select. Palette colours only. */
+.scr-heroes {
+  justify-content: center;
+  gap: 1em;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+.scr-heroes .heroes-head {
+  position: relative;
+  z-index: 1;
+  font-size: clamp(1.4em, 5vmin, 2.2em);
+  transform: rotate(-2deg);
+  margin: 0;
+}
+.hero-cards {
+  position: relative;
+  z-index: 1;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.8em;
+  width: min(100%, 1040px);
+}
+@media (max-width: 760px) {
+  .hero-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.hero-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25em;
+  padding: 0.6em 0.6em 0.8em;
+  text-align: center;
+  min-width: 0;
+}
+.hero-card:nth-child(odd) {
+  transform: rotate(-0.8deg);
+}
+.hero-card:nth-child(even) {
+  transform: rotate(0.7deg);
+}
+.hero-card[aria-selected="true"] {
+  box-shadow: 7px 7px 0 var(--red-2);
+}
+.hero-card .hc-art {
+  width: 100%;
+  max-width: 150px;
+  aspect-ratio: 4 / 3;
+  background: var(--ghost-3);
+  border: 3px solid var(--ink);
+}
+.hero-card .hc-art svg {
+  width: 100%;
+  height: 100%;
+}
+.hero-card h3 {
+  margin: 0.15em 0 0;
+  font-size: 1.5em;
+}
+.hero-card .hc-role {
+  margin: 0;
+  font-size: 0.8em;
+  color: var(--red-1);
+}
+.hero-card .hc-kit {
+  list-style: none;
+  margin: 0.2em 0 0.4em;
+  padding: 0;
+  font-size: 0.72em;
+  line-height: 1.2;
+  text-align: left;
+  flex: 1;
+}
+.hero-card .hc-kit li {
+  margin: 0.15em 0;
+}
+.hero-card .hc-kit b {
+  font-family: var(--f-display);
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  background: var(--ink);
+  color: var(--paper);
+  padding: 0 0.3em;
+}
+@media (max-width: 760px) {
+  .hero-card .hc-kit {
+    font-size: 0.66em;
+  }
+  .hero-card .hc-art {
+    max-width: 110px;
+  }
+}

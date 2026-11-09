@@ -69,3 +69,11 @@ export function detectLang(): Lang {
 
 export const DICTIONARIES = DICTS;
 export const FLAT_DICTIONARIES = FLAT;
+
+/**
+ * Merge a lazily loaded dictionary pair under `prefix` (hero strings ship with the hero chunks, see
+ * ./heroes.ts). Existing keys are overwritten; parity is unit-tested like the main dictionaries.
+ */
+export function extendDictionaries(prefix: string, add: Record<Lang, Dict>): void {
+  for (const l of Object.keys(add) as Lang[]) flatten(add[l], prefix, FLAT[l]);
+}

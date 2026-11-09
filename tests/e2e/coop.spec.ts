@@ -52,12 +52,14 @@ async function expectConnected(host: Page, guest: Page, timeout: number): Promis
 async function readyAndStart(host: Page, guest: Page): Promise<void> {
   // Playwright's actionability checks need rAF → interact with the page in front only
   await host.bringToFront();
-  // only Inker is selectable for now
-  await expect(host.locator('[data-hero="colorist"]')).toBeDisabled();
+  // all four heroes are selectable; the guest picks the Letterer
+  await expect(host.locator('[data-hero="colorist"]')).toBeEnabled();
   await expect(host.locator('[data-hero="inker"]')).toHaveAttribute('aria-checked', 'true');
   await expect(host.locator('[data-act="start"]')).toBeDisabled();
   await host.locator('[data-act="ready"]').click();
   await guest.bringToFront();
+  await guest.locator('[data-hero="letterer"]').click();
+  await expect(guest.locator('[data-hero="letterer"]')).toHaveAttribute('aria-checked', 'true');
   await guest.locator('[data-act="ready"]').click();
   await guest.evaluate(() => {
     const w = window as unknown as {
@@ -82,7 +84,7 @@ async function readyAndStart(host: Page, guest: Page): Promise<void> {
   );
   await guest.bringToFront();
   await expect(guest.locator('.coop-wait')).toBeVisible();
-  expect(await ev.jsonValue()).toMatchObject({ role: 'guest', slot: 1, heroes: ['inker', 'inker'] });
+  expect(await ev.jsonValue()).toMatchObject({ role: 'guest', slot: 1, heroes: ['inker', 'letterer'] });
 }
 
 test.describe('co-op lobby', () => {

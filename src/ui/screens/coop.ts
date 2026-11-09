@@ -8,6 +8,8 @@
  * Start does not launch gameplay yet (wave 2): it calls `onStart(info)` and emits `coop:start`.
  * Test hooks: the card carries data-state / data-tier / data-role; buttons have data-act.
  */
+
+import { load, save } from '../../core/storage';
 import {
   createRoom,
   HEROES,
@@ -54,6 +56,8 @@ export class CoopScreen extends Screen {
   private langOff: (() => void) | null = null;
   private statusEl: HTMLElement | null = null;
   private lobbyEl: HTMLElement | null = null;
+  /** The remembered hero (last pick, solo or co-op) is applied once per session. */
+  private heroApplied = false;
 
   constructor(env: UIEnv) {
     super(env);
@@ -114,6 +118,7 @@ export class CoopScreen extends Screen {
   private attach(s: NetSession): void {
     this.leave();
     this.session = s;
+    this.heroApplied = false;
     this.mode = 'lobby';
     this.codeError = false;
     this.offs.push(
@@ -353,6 +358,11 @@ export class CoopScreen extends Screen {
     if (!box?.isConnected || !s) return;
     const t = this.env.t;
     const me = s.me;
+    if (me && !this.heroApplied) {
+      this.heroApplied = true;
+      const last = load<{ id: string }>('hero', { id: 'inker' }).id as PlayerInfo['hero'];
+      if (last !== me.hero && PLAYABLE_HEROES.includes(last)) s.pick(last);
+    }
     const seat = (slot: 0 | 1, p: PlayerInfo | undefined) =>
       h(
         'li',
@@ -395,7 +405,9 @@ export class CoopScreen extends Screen {
           playable ? null : h('small', null, t('coop.soon')),
         );
         return this.btn(b, () => {
-          if (s.pick(hero)) this.renderLobby();
+          if (!s.pick(hero)) return;
+          save('hero', { id: hero });
+          this.renderLobby();
         });
       }),
     );

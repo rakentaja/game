@@ -189,7 +189,11 @@
     "stetBolt": "STET! THE BOLT STAYS",
     "stetDash": "STET! THE DASH STAYS",
     "stetCrystal": "STET! THE CRYSTAL STAYS",
-    "stetPrint": "STET! PRINTING STAYS"
+    "stetPrint": "STET! PRINTING STAYS",
+    "splash": "SPLASH PAGE!",
+    "layout": "LAYOUT!",
+    "sfxStorm": "SFX STORM!",
+    "fourColor": "FOUR-COLOR!"
   },
   "style": {
     "label": "Editor's mark: {grade}",
